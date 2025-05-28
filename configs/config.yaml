@@ -1,27 +1,6 @@
-# 协议参数、设备点位配置示例
-modbus:
-  port: COM1
-  baudrate: 9600
-s7:
-  ip: 192.168.0.1
-  rack: 0
-  slot: 1
-mqtt:
-  broker: tcp://localhost:18083
-  topic: sensor/data
-devices:
-  - id: "plc1"
-    protocol: "http"
-    interval: 5
-    config:
-      url: "MOCK"
-      method: "GET"
-      mock: true
-
-  - id: "sensor_http"
-    protocol: "http"
-    interval: 5
-    config:
-      url: "MOCK"
-      method: "GET"
-      mock: true
+# configs/config.yaml
+# 用于主程序启动时的全局配置（如程序日志级别 调试模式等）
+log_level: info      # 日志级别: debug/info/warn/error
+debug: false         # 是否开启调试模式
+devices_file: devices.yaml  # 设备清单配置文件路径
+# 其他全局参数可按需扩展

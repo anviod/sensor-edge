@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"sensor-edge/config"
-	"sensor-edge/core"
 	"sensor-edge/edgecompute"
 	"sensor-edge/protocols"
 	"sensor-edge/protocols/modbus"
@@ -38,28 +37,143 @@ func toPointConfig(points []types.PointMapping) []protocols.PointConfig {
 }
 
 func main() {
-	cfg, err := config.LoadConfig("configs/config.yaml")
+	// 1. 通信协议接入与注册（已在各协议包init中自动完成）
+
+	// 2. 读取全局配置、协议参数、设备清单
+	protoConfRaw, err := os.ReadFile("configs/protocols.yaml")
+	if err != nil {
+		panic(err)
+	}
+	var protoConf map[string][]map[string]interface{}
+	err = yaml.Unmarshal(protoConfRaw, &protoConf)
 	if err != nil {
 		panic(err)
 	}
 
-	uplinkCfgs, _ := config.LoadUplinkConfigs("configs/uplinks.yaml")
-	uplinkMgr := uplink.NewUplinkManagerFromConfig(uplinkCfgs)
+	// 3. 加载设备元数据，构建设备映射表
+	devs, err := config.LoadDevicesFromYAML("configs/devices.yaml")
+	if err != nil {
+		panic(err)
+	}
+	devMap := make(map[string]types.DeviceConfigWithMeta)
+	for _, d := range devs {
+		devMap[d.ID] = d
+	}
 
+	// 4. 加载点位物模型映射
+	pointSets, _ := config.LoadPointMappings("configs/points.yaml")
+
+	// 5. 加载边缘计算规则
 	aggRules, _ := config.LoadAggregateRules("configs/edge_rules.yaml")
 	alarmRules, _ := config.LoadAlarmRulesEdge("configs/edge_rules.yaml")
 	linkageRules, _ := config.LoadLinkageRules("configs/edge_rules.yaml")
 	re := edgecompute.NewRuleEngine(aggRules, alarmRules, linkageRules)
 
-	runners, err := core.StartSchedulerWithRuleEngineAndUplink(cfg.Devices, re, uplinkMgr)
-	if err != nil {
-		fmt.Println(err)
-	}
-	_ = runners
+	// 6. 加载上行通道配置
+	uplinkCfgs, _ := config.LoadUplinkConfigs("configs/uplinks.yaml")
+	uplinkMgr := uplink.NewUplinkManagerFromConfig(uplinkCfgs)
 
 	fmt.Println("[System] Device collection, edge rule engine & uplink started...")
 
-	// 支持热加载规则（SIGHUP）
+	// 7. 采集主流程：遍历所有点位配置，自动完成协议参数注入、设备实例化、采集、边缘计算、上报
+	for _, set := range pointSets {
+		devConf, ok := devMap[set.DeviceID]
+		if !ok {
+			fmt.Printf("[WARN] 点位配置 device_id=%s 未找到对应设备\n", set.DeviceID)
+			continue
+		}
+		// 优先用点位配置的 protocol/protocol_name 覆盖设备配置
+		protocol := devConf.Protocol
+		if set.Protocol != "" {
+			protocol = set.Protocol
+		}
+		protocolName := devConf.ProtocolName
+		if set.ProtocolName != "" {
+			protocolName = set.ProtocolName
+		}
+		// 匹配协议参数
+		var protoParams map[string]interface{}
+		for _, p := range protoConf[protocol] {
+			if name, ok := p["name"].(string); ok && name == protocolName {
+				protoParams = p
+				break
+			}
+		}
+		if protoParams == nil {
+			fmt.Printf("[WARN] 设备 %s 未找到匹配的协议参数实例\n", set.DeviceID)
+			continue
+		}
+		if devConf.Config == nil {
+			devConf.Config = make(map[string]interface{})
+		}
+		// 自动将设备顶层参数注入Config（如slave_id等）
+		devMetaMap := map[string]interface{}{}
+		devMetaYaml, _ := yaml.Marshal(devConf.DeviceMeta)
+		yaml.Unmarshal(devMetaYaml, &devMetaMap)
+		for k, v := range devMetaMap {
+			if k != "id" && k != "name" && k != "description" && k != "protocol" && k != "protocol_name" && k != "interval" && k != "enable_ping" {
+				if _, exists := devConf.Config[k]; !exists {
+					devConf.Config[k] = v
+				}
+			}
+		}
+		for k, v := range protoParams {
+			if _, exists := devConf.Config[k]; !exists {
+				devConf.Config[k] = v
+			}
+		}
+		client, err := protocols.Create(protocol)
+		if err != nil {
+			fmt.Printf("[ERROR] 设备 %s 协议创建失败: %v\n", set.DeviceID, err)
+			continue
+		}
+		err = client.Init(devConf.Config)
+		if err != nil {
+			fmt.Printf("[ERROR] 设备 %s 协议初始化失败: %v\n", set.DeviceID, err)
+			continue
+		}
+		// 采集点位
+		var values []protocols.PointValue
+		pointAddrs := make([]string, 0, len(set.Points))
+		for _, p := range set.Points {
+			pointAddrs = append(pointAddrs, p.Address)
+		}
+		maxRetry := 3
+		for retry := 1; retry <= maxRetry; retry++ {
+			values, err = client.(*modbus.ModbusTCP).ReadBatch(set.DeviceID, pointAddrs)
+			if err == nil {
+				break
+			}
+			fmt.Printf("[WARN] 设备 %s Modbus 读取失败（第%d次）：%v\n", set.DeviceID, retry, err)
+			time.Sleep(2 * time.Second)
+		}
+		if err != nil {
+			fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
+			continue
+		}
+		// 物模型映射、报警、边缘计算
+		pointValues := make(map[string]interface{})
+		for _, v := range values {
+			pointValues[v.PointID] = v.Value
+			fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, v.Value)
+		}
+		re.ApplyRules(set.DeviceID, pointValues)
+		// 编码数据并上报
+		payload := uplink.EncodeDataReport(
+			set.DeviceID,
+			pointValues,
+			nil, // 无报警信息
+			nil, // 无指标数据
+		)
+		err = uplinkMgr.SendToAll(payload)
+		if err != nil {
+			fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)
+		} else {
+			fmt.Printf("[Success] 设备 %s 数据上报成功\n", set.DeviceID)
+		}
+	}
+
+	// 8. 支持热加载规则（SIGHUP）
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP)
 	go func() {
@@ -73,127 +187,6 @@ func main() {
 			fmt.Println("[System] Edge rules reloaded!")
 		}
 	}()
-
-	// ========== DEMO: 读取 modbus1 设备所有温度点位并上报 ===========
-	fmt.Println("[Demo] 读取并上报 modbus1 设备所有温度点位:")
-	pointSets, _ := config.LoadPointMappings("configs/points.yaml")
-	var modbusPoints []types.PointMapping
-	for _, set := range pointSets {
-		if set.DeviceID == "modbus1" {
-			modbusPoints = set.Points
-		}
-	}
-	if len(modbusPoints) > 0 {
-		// 读取协议参数（如 interval/timeout）
-		protoConfRaw, err := os.ReadFile("configs/protocols.yaml")
-		if err != nil {
-			panic(err)
-		}
-		var protoConf map[string]map[string]interface{}
-		err = yaml.Unmarshal(protoConfRaw, &protoConf)
-		if err != nil {
-			panic(err)
-		}
-		modbusTCPConf := protoConf["modbus_tcp"]
-		interval := 1
-		if v, ok := modbusTCPConf["interval"]; ok {
-			switch vv := v.(type) {
-			case int:
-				interval = vv
-			case float64:
-				interval = int(vv)
-			}
-		}
-		timeout := 2000
-		if v, ok := modbusTCPConf["timeout"]; ok {
-			switch vv := v.(type) {
-			case int:
-				timeout = vv
-			case float64:
-				timeout = int(vv)
-			}
-		}
-		ip := "127.0.0.1"
-		if v, ok := modbusTCPConf["ip"]; ok {
-			ip = fmt.Sprintf("%v", v)
-		}
-		port := 502
-		if v, ok := modbusTCPConf["port"]; ok {
-			switch vv := v.(type) {
-			case int:
-				port = vv
-			case float64:
-				port = int(vv)
-			}
-		}
-		// 构造设备配置
-		devConf := types.DeviceConfig{
-			ID:       "modbus1",
-			Protocol: "modbus_tcp",
-			Interval: interval,
-			Config: map[string]interface{}{
-				"ip":      ip,
-				"port":    port,
-				"timeout": timeout,
-				// 其他参数可按需补充
-			},
-		}
-		client, err := protocols.Create(devConf.Protocol)
-		if err != nil {
-			panic(err)
-		}
-		err = client.Init(devConf.Config)
-		if err != nil {
-			panic(err)
-		}
-		// 使用转换后的 []string 读取数据，增加重试机制
-		var values []protocols.PointValue
-		pointAddrs := make([]string, 0, len(modbusPoints))
-		for _, p := range modbusPoints {
-			pointAddrs = append(pointAddrs, p.Address)
-		}
-		maxRetry := 3
-		for retry := 1; retry <= maxRetry; retry++ {
-			values, err = client.(*modbus.ModbusTCP).ReadBatch(devConf.ID, pointAddrs)
-			if err == nil {
-				break
-			}
-			fmt.Printf("[WARN] Modbus 读取失败（第%d次）：%v\n", retry, err)
-			time.Sleep(2 * time.Second)
-		}
-		if err != nil {
-			panic(err)
-		}
-		// 构造点位数据
-		pointValues := make(map[string]interface{})
-		for _, v := range values {
-			pointValues[v.PointID] = v.Value
-			fmt.Printf("[modbus1] %s = %v\n", v.PointID, v.Value)
-		}
-		// 编码数据并上报
-		payload := uplink.EncodeDataReport(
-			devConf.ID,
-			pointValues,
-			nil, // 无报警信息
-			nil, // 无指标数据
-		)
-		// 通过所有已配置的上行通道发送数据
-		err = uplinkMgr.SendToAll(payload)
-		if err != nil {
-			fmt.Printf("[Error] 数据上报失败: %v\n", err)
-		} else {
-			fmt.Println("[Success] 数据上报成功")
-		}
-	}
-
-	// DEMO: 修改设备采集频率
-	// 假设有一个runner列表，找到modbus1并修改其采集频率为2秒
-	for _, r := range runners {
-		if r.ID == "modbus1" {
-			fmt.Println("[Demo] 修改 modbus1 采集频率为2秒")
-			r.SetInterval(2)
-		}
-	}
 
 	// 阻塞运行
 	select {}

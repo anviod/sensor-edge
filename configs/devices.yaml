@@ -1,10 +1,9 @@
 # 设备清单
-- id: "sensor_modbus"
+- id: "sensor_modbus_1"
   name: "环境传感器"
   description: "温湿度采集"
   protocol: "modbus_tcp"
+  protocol_name: "modbus_tcp_name_1"
   interval: 5
   enable_ping: false
-  config:
-    ip: "127.0.0.1"
-    port: 502
+  slave_id: 2

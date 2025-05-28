@@ -1,21 +1,33 @@
 # 协议参数示例
 modbus_rtu:
-  name: "modbus_rtu_name"
-  port: COM1
-  baudrate: 9600
-  interval: 5         # 采集周期(秒)
-  timeout: 2000       # 采集超时时间(毫秒)
+  - name: "modbus_rtu_name_1"
+    port: COM1
+    baudrate: 9600
+    interval: 5         # 采集周期(秒)
+    timeout: 2000       # 采集超时时间(毫秒)
 modbus_tcp:
-  name: "modbus_tcp_name"
-  ip: 127.0.0.1
-  port: 502
-  interval: 5         # 采集周期(秒)
-  timeout: 2000       # 采集超时时间(毫秒)
+  - name: "modbus_tcp_name_1"
+    ip: 127.0.0.1
+    port: 502
+    interval: 5         # 采集周期(秒)
+    timeout: 2000       # 采集超时时间(毫秒)
+  - name: "modbus_tcp_name_2"
+    ip: 10.0.0.1
+    port: 502
+    interval: 5         # 采集周期(秒)
+    timeout: 2000       # 采集超时时间(毫秒)
 s7:
-  name: "s7_name"
-  ip: 192.168.0.1
-  rack: 0
-  slot: 1
-  interval: 5         # 采集周期(秒)
-  timeout: 2000       # 采集超时时间(毫秒)
+  - name: "s7_name_1"
+    ip: 192.168.0.1
+    rack: 0
+    slot: 1
+    interval: 5         # 采集周期(秒)
+    timeout: 2000       # 采集超时时间(毫秒)
+  - name: "s7_name_2"
+    ip: 192.168.0.2
+    rack: 0
+    slot: 2
+    interval: 10        # 采集周期(秒)
+    timeout: 3000       # 采集超时时间(毫秒)
+
 

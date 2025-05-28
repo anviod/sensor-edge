@@ -17,6 +17,8 @@ type PointMapping struct {
 }
 
 type DevicePointSet struct {
-	DeviceID string         `yaml:"device_id"`
-	Points   []PointMapping `yaml:"points"`
+	DeviceID     string         `yaml:"device_id"`
+	Protocol     string         `yaml:"protocol"`
+	ProtocolName string         `yaml:"protocol_name"`
+	Points       []PointMapping `yaml:"points"`
 }

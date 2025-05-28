@@ -1,13 +1,4 @@
 # 设备清单
-- id: "plc1"
-  name: "三菱PLC01"
-  description: "风机控制器"
-  protocol: "modbus"
-  interval: 10
-  enable_ping: true
-  config:
-    ip: "192.168.0.10"
-    port: 502
 - id: "sensor_modbus"
   name: "环境传感器"
   description: "温湿度采集"

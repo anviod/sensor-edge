@@ -1,28 +1,16 @@
-# 上行通道配置
 - type: "mqtt"
   name: "cloud_mqtt"
   enable: true
-  broker: "tcp://mqtt.example.com:1883"
+  broker: "tcp://127.0.0.1:18083"
   client_id: "edge001"
   username: "user"
   password: "pass"
   topic: "edge/data"
+
 - type: "http"
   name: "webapi_push"
-  enable: true
-  url: "http://cloud.example.com/api/v1/telemetry"
+  enable: false
+  url: "http://192.168.1.230/api/v1/telemetry"
   method: "POST"
   headers:
     Authorization: "Bearer xxx"
-- type: "kafka"
-  name: "kafka_main"
-  enable: true
-  brokers:
-    - "kafka1:9092"
-    - "kafka2:9092"
-  topic: "iot_data"
-- type: "nats"
-  name: "nats_eventbus"
-  enable: true
-  server: "nats://localhost:4222"
-  subject: "edge.up"

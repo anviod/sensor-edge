@@ -1,15 +1,21 @@
 # 协议参数示例
-modbus:
+modbus_rtu:
+  name: "modbus_rtu_name"
   port: COM1
   baudrate: 9600
+  interval: 5         # 采集周期(秒)
+  timeout: 2000       # 采集超时时间(毫秒)
 modbus_tcp:
-  ip:127.0.0.1
-  port: COM1
-  baudrate: 9600
+  name: "modbus_tcp_name"
+  ip: 127.0.0.1
+  port: 502
+  interval: 5         # 采集周期(秒)
+  timeout: 2000       # 采集超时时间(毫秒)
 s7:
+  name: "s7_name"
   ip: 192.168.0.1
   rack: 0
   slot: 1
-mqtt:
-  broker: tcp://localhost:1883
-  topic: sensor/data
+  interval: 5         # 采集周期(秒)
+  timeout: 2000       # 采集超时时间(毫秒)
+

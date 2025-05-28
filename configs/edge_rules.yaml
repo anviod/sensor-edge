@@ -1,4 +1,3 @@
-# 边缘计算规则
 - id: "rule_avg_temp"
   description: "统计温度平均值"
   type: "aggregate"
@@ -6,6 +5,7 @@
   point: "env_temp"
   method: "avg"
   window: 5
+
 - id: "rule_alarm_speed"
   description: "风机转速过低报警"
   type: "alarm"
@@ -14,6 +14,7 @@
   condition: "value < 500"
   level: "warning"
   message: "风机转速过低"
+
 - id: "rule_linkage_pump"
   description: "风机故障→关闭水泵"
   type: "linkage"

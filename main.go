@@ -13,6 +13,8 @@ import (
 	"sensor-edge/uplink"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // toPointConfig 将 types.PointMapping 转为 protocols.PointConfig
@@ -82,15 +84,58 @@ func main() {
 		}
 	}
 	if len(modbusPoints) > 0 {
+		// 读取协议参数（如 interval/timeout）
+		protoConfRaw, err := os.ReadFile("configs/protocols.yaml")
+		if err != nil {
+			panic(err)
+		}
+		var protoConf map[string]map[string]interface{}
+		err = yaml.Unmarshal(protoConfRaw, &protoConf)
+		if err != nil {
+			panic(err)
+		}
+		modbusTCPConf := protoConf["modbus_tcp"]
+		interval := 1
+		if v, ok := modbusTCPConf["interval"]; ok {
+			switch vv := v.(type) {
+			case int:
+				interval = vv
+			case float64:
+				interval = int(vv)
+			}
+		}
+		timeout := 2000
+		if v, ok := modbusTCPConf["timeout"]; ok {
+			switch vv := v.(type) {
+			case int:
+				timeout = vv
+			case float64:
+				timeout = int(vv)
+			}
+		}
+		ip := "127.0.0.1"
+		if v, ok := modbusTCPConf["ip"]; ok {
+			ip = fmt.Sprintf("%v", v)
+		}
+		port := 502
+		if v, ok := modbusTCPConf["port"]; ok {
+			switch vv := v.(type) {
+			case int:
+				port = vv
+			case float64:
+				port = int(vv)
+			}
+		}
+		// 构造设备配置
 		devConf := types.DeviceConfig{
 			ID:       "modbus1",
 			Protocol: "modbus_tcp",
-			Interval: 1,
+			Interval: interval,
 			Config: map[string]interface{}{
-				"ip":       "192.168.1.120", // 修改为实际Modbus设备IP
-				"port":     502,             // Modbus TCP默认端口
-				"timeout":  3,               // 连接超时3秒
-				"slave_id": 2,
+				"ip":      ip,
+				"port":    port,
+				"timeout": timeout,
+				// 其他参数可按需补充
 			},
 		}
 		client, err := protocols.Create(devConf.Protocol)
@@ -101,7 +146,6 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-
 		// 使用转换后的 []string 读取数据，增加重试机制
 		var values []protocols.PointValue
 		pointAddrs := make([]string, 0, len(modbusPoints))
@@ -120,14 +164,12 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-
 		// 构造点位数据
 		pointValues := make(map[string]interface{})
 		for _, v := range values {
 			pointValues[v.PointID] = v.Value
 			fmt.Printf("[modbus1] %s = %v\n", v.PointID, v.Value)
 		}
-
 		// 编码数据并上报
 		payload := uplink.EncodeDataReport(
 			devConf.ID,
@@ -135,7 +177,6 @@ func main() {
 			nil, // 无报警信息
 			nil, // 无指标数据
 		)
-
 		// 通过所有已配置的上行通道发送数据
 		err = uplinkMgr.SendToAll(payload)
 		if err != nil {

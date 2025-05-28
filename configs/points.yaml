@@ -1,35 +1,213 @@
-# 点位物模型
-- device_id: "plc1"
+# 批量温度点位配置示例
+- device_id: "modbus1"
   points:
-    - address: "d100"
-      name: "fan_status"
-      type: "bool"
-      unit: ""
-      transform: ""
-      alarm:
-        enable: true
-        condition: "value == false"
-        level: "critical"
-        message: "风机故障"
-    - address: "d101"
-      name: "fan_speed"
+    - address: "40001"
+      name: "temp_1"
       type: "int"
-      unit: "rpm"
-      transform: "value * 0.1"
-      alarm:
-        enable: true
-        condition: "value < 500"
-        level: "warning"
-        message: "风机转速过低"
-- device_id: "sensor_http"
-  points:
-    - address: "temperature"
-      name: "env_temp"
-      type: "float"
       unit: "℃"
-      transform: ""
+      transform: "value * 0.1"
       alarm:
         enable: true
         condition: "value > 80"
         level: "critical"
-        message: "环境温度过高"
+        message: "温度过高"
+    - address: "40002"
+      name: "temp_2"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40003"
+      name: "temp_3"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40004"
+      name: "temp_4"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40005"
+      name: "temp_5"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40006"
+      name: "temp_6"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40007"
+      name: "temp_7"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40008"
+      name: "temp_8"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40009"
+      name: "temp_9"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40010"
+      name: "temp_10"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40011"
+      name: "temp_11"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40012"
+      name: "temp_12"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40013"
+      name: "temp_13"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40021"
+      name: "temp_14"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40015"
+      name: "temp_15"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40016"
+      name: "temp_16"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40017"
+      name: "temp_17"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40018"
+      name: "temp_18"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40019"
+      name: "temp_19"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40020"
+      name: "temp_20"
+      type: "int"
+      unit: "℃"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"
+    - address: "40021"
+      name: "temp_21"
+      type: "int"
+      unit: "℃"
+      transform: "value"
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "温度过高"

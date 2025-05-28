@@ -1,0 +1,27 @@
+# 协议参数、设备点位配置示例
+modbus:
+  port: COM1
+  baudrate: 9600
+s7:
+  ip: 192.168.0.1
+  rack: 0
+  slot: 1
+mqtt:
+  broker: tcp://localhost:18083
+  topic: sensor/data
+devices:
+  - id: "plc1"
+    protocol: "http"
+    interval: 5
+    config:
+      url: "MOCK"
+      method: "GET"
+      mock: true
+
+  - id: "sensor_http"
+    protocol: "http"
+    interval: 5
+    config:
+      url: "MOCK"
+      method: "GET"
+      mock: true

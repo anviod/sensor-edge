@@ -1,0 +1,26 @@
+- id: "rule_avg_temp"
+  description: "统计温度平均值"
+  type: "aggregate"
+  device_id: "sensor_http"
+  point: "env_temp"
+  method: "avg"
+  window: 5
+
+- id: "rule_alarm_speed"
+  description: "风机转速过低报警"
+  type: "alarm"
+  device_id: "plc1"
+  point: "fan_speed"
+  condition: "value < 500"
+  level: "warning"
+  message: "风机转速过低"
+
+- id: "rule_linkage_pump"
+  description: "风机故障→关闭水泵"
+  type: "linkage"
+  source_device: "plc1"
+  source_point: "fan_status"
+  condition: "value == false"
+  action_device: "plc2"
+  action_address: "d200"
+  action_value: 0

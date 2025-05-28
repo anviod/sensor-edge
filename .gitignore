@@ -1,0 +1,7 @@
+edge_rule.log
+uplink.log
+*.log
+.vscode/
+.vs/
+# Ignore Python cache files
+.idea/

@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/app/config
+      - ./docs:/app/docs
+    restart: unless-stopped
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+  cli:
+    build:
+      context: .
+      dockerfile: cli.Dockerfile
+    entrypoint: ["/app/sensor-edge"]
+    volumes:
+      - ./config:/app/config
+    depends_on:
+      - backend

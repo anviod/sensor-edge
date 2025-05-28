@@ -1,0 +1,133 @@
+openapi: 3.0.1
+info:
+  title: Sensor Edge Collector API
+  version: "1.0"
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/devices:
+    get:
+      summary: 获取设备列表
+      tags:
+        - Device
+      responses:
+        '200':
+          description: 成功返回设备数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+    post:
+      summary: 新增设备
+      tags:
+        - Device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Device'
+      responses:
+        '201':
+          description: 设备创建成功
+  /api/devices/{id}:
+    get:
+      summary: 获取单个设备
+      tags:
+        - Device
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功返回设备
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+    put:
+      summary: 更新设备信息
+      tags:
+        - Device
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Device'
+      responses:
+        '200':
+          description: 更新成功
+    delete:
+      summary: 删除设备
+      tags:
+        - Device
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 删除成功，无内容
+
+components:
+  schemas:
+    Device:
+      type: object
+      required:
+        - id
+        - name
+        - protocol
+        - interval
+      properties:
+        id:
+          type: string
+          description: 设备唯一标识
+        name:
+          type: string
+          description: 设备名称
+        description:
+          type: string
+          description: 设备描述
+        protocol:
+          type: string
+          description: 绑定协议类型
+          enum:
+            - modbus_tcp
+            - s7
+            - snmp
+            - slmp
+            - http
+            - tcpclient
+        interval:
+          type: integer
+          description: 采集间隔(秒)
+        enable_ping:
+          type: boolean
+          description: 是否启用心跳检测
+        config:
+          type: object
+          additionalProperties: true
+          description: 协议连接参数
+
+security:
+  - ApiKeyAuth: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

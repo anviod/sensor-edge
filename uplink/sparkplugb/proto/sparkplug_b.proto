@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package sparkplug_b;
+
+message Payload {
+  int64 timestamp = 1;
+  repeated Payload_Metric metrics = 2;
+  int32 seq = 3;
+}
+
+message Payload_Metric {
+  string name = 1;
+  int32 alias = 2;
+  int64 timestamp = 3;
+  int32 datatype = 4;
+  bool is_historical = 5;
+  bool is_transient = 6;
+  bool is_null = 7;
+  double double_value = 8;
+  float float_value = 9;
+  int32 int_value = 10;
+  int64 long_value = 11;
+  string string_value = 12;
+  bool boolean_value = 13;
+  bytes bytes_value = 14;
+  // ...可扩展其它类型...
+}

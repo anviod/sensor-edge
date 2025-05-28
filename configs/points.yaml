@@ -1,0 +1,35 @@
+# 点位物模型
+- device_id: "plc1"
+  points:
+    - address: "d100"
+      name: "fan_status"
+      type: "bool"
+      unit: ""
+      transform: ""
+      alarm:
+        enable: true
+        condition: "value == false"
+        level: "critical"
+        message: "风机故障"
+    - address: "d101"
+      name: "fan_speed"
+      type: "int"
+      unit: "rpm"
+      transform: "value * 0.1"
+      alarm:
+        enable: true
+        condition: "value < 500"
+        level: "warning"
+        message: "风机转速过低"
+- device_id: "sensor_http"
+  points:
+    - address: "temperature"
+      name: "env_temp"
+      type: "float"
+      unit: "℃"
+      transform: ""
+      alarm:
+        enable: true
+        condition: "value > 80"
+        level: "critical"
+        message: "环境温度过高"

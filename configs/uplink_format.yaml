@@ -1,0 +1,7 @@
+# 上报字段映射/模板（可选）
+fields:
+  device_id: "${device_id}"
+  ts: "${timestamp}"
+  fan_status: "${fan_status}"
+  fan_speed: "${fan_speed}"
+  env_temp: "${env_temp}"

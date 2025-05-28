@@ -29,3 +29,5 @@ func LoadDevicesFromJSON(file string) ([]types.DeviceConfigWithMeta, error) {
 	err = json.Unmarshal(data, &devs)
 	return devs, err
 }
+
+// configs/devices.yaml

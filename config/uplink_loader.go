@@ -23,6 +23,8 @@ type UplinkConfig struct {
 	Subject  string            `yaml:"subject"`
 }
 
+// LoadUplinkConfigs loads the uplink configurations from the specified file.
+// The default file is configs/uplinks.yaml
 func LoadUplinkConfigs(file string) ([]UplinkConfig, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {

@@ -36,17 +36,17 @@ func toPointConfig(points []types.PointMapping) []protocols.PointConfig {
 }
 
 func main() {
-	cfg, err := config.LoadConfig("config/config.yaml")
+	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
 		panic(err)
 	}
 
-	uplinkCfgs, _ := config.LoadUplinkConfigs("config/uplinks.yaml")
+	uplinkCfgs, _ := config.LoadUplinkConfigs("configs/uplinks.yaml")
 	uplinkMgr := uplink.NewUplinkManagerFromConfig(uplinkCfgs)
 
-	aggRules, _ := config.LoadAggregateRules("config/edge_rules.yaml")
-	alarmRules, _ := config.LoadAlarmRulesEdge("config/edge_rules.yaml")
-	linkageRules, _ := config.LoadLinkageRules("config/edge_rules.yaml")
+	aggRules, _ := config.LoadAggregateRules("configs/edge_rules.yaml")
+	alarmRules, _ := config.LoadAlarmRulesEdge("configs/edge_rules.yaml")
+	linkageRules, _ := config.LoadLinkageRules("configs/edge_rules.yaml")
 	re := edgecompute.NewRuleEngine(aggRules, alarmRules, linkageRules)
 
 	runners, err := core.StartSchedulerWithRuleEngineAndUplink(cfg.Devices, re, uplinkMgr)
@@ -62,9 +62,9 @@ func main() {
 	signal.Notify(c, syscall.SIGHUP)
 	go func() {
 		for range c {
-			aggRules, _ = config.LoadAggregateRules("config/edge_rules.yaml")
-			alarmRules, _ = config.LoadAlarmRulesEdge("config/edge_rules.yaml")
-			linkageRules, _ = config.LoadLinkageRules("config/edge_rules.yaml")
+			aggRules, _ = config.LoadAggregateRules("configs/edge_rules.yaml")
+			alarmRules, _ = config.LoadAlarmRulesEdge("configs/edge_rules.yaml")
+			linkageRules, _ = config.LoadLinkageRules("configs/edge_rules.yaml")
 			re.AggRules = aggRules
 			re.AlarmRules = alarmRules
 			re.LinkageRules = linkageRules
@@ -74,7 +74,7 @@ func main() {
 
 	// ========== DEMO: 读取 modbus1 设备所有温度点位并上报 ===========
 	fmt.Println("[Demo] 读取并上报 modbus1 设备所有温度点位:")
-	pointSets, _ := config.LoadPointMappings("config/points.yaml")
+	pointSets, _ := config.LoadPointMappings("configs/points.yaml")
 	var modbusPoints []types.PointMapping
 	for _, set := range pointSets {
 		if set.DeviceID == "modbus1" {
@@ -88,8 +88,8 @@ func main() {
 			Interval: 1,
 			Config: map[string]interface{}{
 				"ip":       "192.168.1.120", // 修改为实际Modbus设备IP
-				"port":     502, // Modbus TCP默认端口
-				"timeout":  3, // 连接超时3秒
+				"port":     502,             // Modbus TCP默认端口
+				"timeout":  3,               // 连接超时3秒
 				"slave_id": 2,
 			},
 		}

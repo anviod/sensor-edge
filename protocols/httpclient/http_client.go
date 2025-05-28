@@ -3,7 +3,7 @@ package httpclient
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"sensor-edge/protocols"
@@ -61,7 +61,7 @@ func (h *HTTPClient) Read(deviceID string) ([]protocols.PointValue, error) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(body, &parsed); err != nil {
@@ -80,19 +80,8 @@ func (h *HTTPClient) Read(deviceID string) ([]protocols.PointValue, error) {
 }
 
 func (h *HTTPClient) ReadBatch(deviceID string, points []string) ([]protocols.PointValue, error) {
-	if len(points) == 0 {
-		return nil, nil
-	}
-	var values []protocols.PointValue
-	for _, pt := range points {
-		v, err := h.ReadPoint(pt)
-		if err != nil {
-			values = append(values, protocols.PointValue{PointID: pt, Quality: "bad", Value: nil, Timestamp: time.Now().Unix()})
-			continue
-		}
-		values = append(values, protocols.PointValue{PointID: pt, Quality: "good", Value: v, Timestamp: time.Now().Unix()})
-	}
-	return values, nil
+	//不支持批量读取，直接返回空
+	 return nil, nil
 }
 
 func (h *HTTPClient) Write(point string, value interface{}) error {

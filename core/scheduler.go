@@ -23,16 +23,16 @@ func StartScheduler(devices []types.DeviceConfig) ([]*DeviceRunner, error) {
 	var runners []*DeviceRunner
 
 	// 加载点位物模型映射
-	pointSets, _ := config.LoadPointMappings("sensor-edge/config/points.yaml")
+	pointSets, _ := config.LoadPointMappings("configs/points.yaml")
 	pointMap := make(map[string][]types.PointMapping)
 	for _, set := range pointSets {
 		pointMap[set.DeviceID] = set.Points
 	}
 
 	// 加载边缘计算规则
-	aggRules, _ := config.LoadAggregateRules("sensor-edge/config/edge_rules.yaml")
-	alarmRules, _ := config.LoadAlarmRulesEdge("sensor-edge/config/edge_rules.yaml")
-	linkageRules, _ := config.LoadLinkageRules("sensor-edge/config/edge_rules.yaml")
+	aggRules, _ := config.LoadAggregateRules("configs/edge_rules.yaml")
+	alarmRules, _ := config.LoadAlarmRulesEdge("configs/edge_rules.yaml")
+	linkageRules, _ := config.LoadLinkageRules("configs/edge_rules.yaml")
 	re := edgecompute.NewRuleEngine(aggRules, alarmRules, linkageRules)
 
 	for _, dev := range devices {
@@ -105,7 +105,7 @@ func StartScheduler(devices []types.DeviceConfig) ([]*DeviceRunner, error) {
 func StartSchedulerWithRuleEngine(devices []types.DeviceConfig, re *edgecompute.RuleEngine) ([]*DeviceRunner, error) {
 	var runners []*DeviceRunner
 
-	pointSets, _ := config.LoadPointMappings("sensor-edge/config/points.yaml")
+	pointSets, _ := config.LoadPointMappings("configs/points.yaml")
 	pointMap := make(map[string][]types.PointMapping)
 	for _, set := range pointSets {
 		pointMap[set.DeviceID] = set.Points

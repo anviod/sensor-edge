@@ -36,3 +36,5 @@ func LoadLinkageRules(file string) ([]types.LinkageRule, error) {
 	err = yaml.Unmarshal(data, &rules)
 	return rules, err
 }
+
+// configs/edge_rules.yaml

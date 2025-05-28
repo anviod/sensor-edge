@@ -22,3 +22,5 @@ func LoadConfig(filePath string) (*types.Config, error) {
 
 	return &cfg, nil
 }
+
+// configs/config.yaml

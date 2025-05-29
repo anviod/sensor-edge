@@ -10,7 +10,7 @@ type DeviceMeta struct {
 	EnablePing   bool   `yaml:"enable_ping"`
 	IP           string `yaml:"ip"`
 	Port         int    `yaml:"port"`
-	SlaveID      byte   `yaml:"slave_id"` // 新增字段
+	SlaveID      int    `yaml:"slave_id"` // 新增字段
 }
 
 type DeviceConfigWithMeta struct {

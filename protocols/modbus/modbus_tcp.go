@@ -258,3 +258,9 @@ func (m *ModbusTCP) Write(point string, value interface{}) error {
 		return fmt.Errorf("unsupported value type: %T", value)
 	}
 }
+
+func (m *ModbusTCP) SetSlave(slaveId byte) {
+	if m.handler != nil {
+		m.handler.SlaveId = slaveId
+	}
+}

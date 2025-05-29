@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
 	"sensor-edge/config"
 	"sensor-edge/edgecompute"
 	"sensor-edge/protocols"
@@ -15,6 +16,15 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// 客户端池Key
+type ClientKey struct {
+	Protocol string
+	IP       string
+	Port     int
+}
+
+var clientCache = make(map[ClientKey]protocols.Protocol)
 
 // toPointConfig 将 types.PointMapping 转为 protocols.PointConfig
 func toPointConfig(points []types.PointMapping) []protocols.PointConfig {
@@ -34,6 +44,78 @@ func toPointConfig(points []types.PointMapping) []protocols.PointConfig {
 		})
 	}
 	return out
+}
+
+// 辅助函数：注入设备元数据到Config
+func injectDeviceMeta(dev *types.DeviceConfigWithMeta, meta types.DeviceMeta) {
+	val := reflect.ValueOf(meta)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	typ := val.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		tag := field.Tag.Get("yaml")
+		if tag == "" {
+			continue
+		}
+		if dev.Config == nil {
+			dev.Config = make(map[string]interface{})
+		}
+		if _, exists := dev.Config[tag]; !exists {
+			dev.Config[tag] = val.Field(i).Interface()
+		}
+	}
+}
+
+// 辅助函数：提取点位地址
+func extractPointAddresses(points []types.PointMapping) []string {
+	addrs := make([]string, 0, len(points))
+	for _, p := range points {
+		addrs = append(addrs, p.Address)
+	}
+	return addrs
+}
+
+// 辅助函数：带重试的批量读取
+func readWithRetry(client protocols.Protocol, devID string, addrs []string, maxRetry int) ([]protocols.PointValue, error) {
+	var values []protocols.PointValue
+	var err error
+	for retry := 1; retry <= maxRetry; retry++ {
+		values, err = client.ReadBatch(devID, addrs)
+		if err == nil {
+			break
+		}
+		fmt.Printf("[WARN] 设备 %s 读取失败（第%d次）：%v\n", devID, retry, err)
+		time.Sleep(2 * time.Second)
+	}
+	return values, err
+}
+
+// 获取或创建协议客户端（池化）
+func getOrCreateClient(protocol string, config map[string]interface{}) (protocols.Protocol, error) {
+	ip, _ := config["ip"].(string)
+	port := 0
+	switch v := config["port"].(type) {
+	case int:
+		port = v
+	case float64:
+		port = int(v)
+	}
+	key := ClientKey{Protocol: protocol, IP: ip, Port: port}
+	if client, exists := clientCache[key]; exists {
+		return client, nil
+	}
+	client, err := protocols.Create(protocol)
+	if err != nil {
+		return nil, err
+	}
+	err = client.Init(config)
+	if err != nil {
+		return nil, err
+	}
+	clientCache[key] = client
+	return client, nil
 }
 
 func main() {
@@ -82,7 +164,6 @@ func main() {
 			fmt.Printf("[WARN] 点位配置 device_id=%s 未找到对应设备\n", set.DeviceID)
 			continue
 		}
-		// 优先用点位配置的 protocol/protocol_name 覆盖设备配置
 		protocol := devConf.Protocol
 		if set.Protocol != "" {
 			protocol = set.Protocol
@@ -91,7 +172,6 @@ func main() {
 		if set.ProtocolName != "" {
 			protocolName = set.ProtocolName
 		}
-		// 匹配协议参数
 		var protoParams map[string]interface{}
 		for _, p := range protoConf[protocol] {
 			if name, ok := p["name"].(string); ok && name == protocolName {
@@ -106,65 +186,43 @@ func main() {
 		if devConf.Config == nil {
 			devConf.Config = make(map[string]interface{})
 		}
-		// 自动将设备顶层参数注入Config（如slave_id等）
-		devMetaMap := map[string]interface{}{}
-		devMetaYaml, _ := yaml.Marshal(devConf.DeviceMeta)
-		yaml.Unmarshal(devMetaYaml, &devMetaMap)
-		for k, v := range devMetaMap {
-			if k != "id" && k != "name" && k != "description" && k != "protocol" && k != "protocol_name" && k != "interval" && k != "enable_ping" {
-				if _, exists := devConf.Config[k]; !exists {
-					devConf.Config[k] = v
-				}
-			}
-		}
+		injectDeviceMeta(&devConf, devConf.DeviceMeta)
 		for k, v := range protoParams {
 			if _, exists := devConf.Config[k]; !exists {
 				devConf.Config[k] = v
 			}
 		}
-		client, err := protocols.Create(protocol)
-		if err != nil {
-			fmt.Printf("[ERROR] 设备 %s 协议创建失败: %v\n", set.DeviceID, err)
-			continue
-		}
-		err = client.Init(devConf.Config)
+		client, err := getOrCreateClient(protocol, devConf.Config)
 		if err != nil {
 			fmt.Printf("[ERROR] 设备 %s 协议初始化失败: %v\n", set.DeviceID, err)
 			continue
 		}
-		// 采集点位
-		var values []protocols.PointValue
-		pointAddrs := make([]string, 0, len(set.Points))
-		for _, p := range set.Points {
-			pointAddrs = append(pointAddrs, p.Address)
-		}
-		maxRetry := 3
-		for retry := 1; retry <= maxRetry; retry++ {
-			values, err = client.(*modbus.ModbusTCP).ReadBatch(set.DeviceID, pointAddrs)
-			if err == nil {
-				break
+		// 动态设置slave_id
+		if m, ok := client.(*modbus.ModbusTCP); ok {
+			slaveId := byte(1)
+			if v, ok := devConf.Config["slave_id"]; ok {
+				switch vv := v.(type) {
+				case int:
+					slaveId = byte(vv)
+				case float64:
+					slaveId = byte(vv)
+				}
 			}
-			fmt.Printf("[WARN] 设备 %s Modbus 读取失败（第%d次）：%v\n", set.DeviceID, retry, err)
-			time.Sleep(2 * time.Second)
+			m.SetSlave(slaveId)
 		}
+		pointAddrs := extractPointAddresses(set.Points)
+		values, err := readWithRetry(client, set.DeviceID, pointAddrs, 3)
 		if err != nil {
 			fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
 			continue
 		}
-		// 物模型映射、报警、边缘计算
 		pointValues := make(map[string]interface{})
 		for _, v := range values {
 			pointValues[v.PointID] = v.Value
 			fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, v.Value)
 		}
 		re.ApplyRules(set.DeviceID, pointValues)
-		// 编码数据并上报
-		payload := uplink.EncodeDataReport(
-			set.DeviceID,
-			pointValues,
-			nil, // 无报警信息
-			nil, // 无指标数据
-		)
+		payload := uplink.EncodeDataReport(set.DeviceID, pointValues, nil, nil)
 		err = uplinkMgr.SendToAll(payload)
 		if err != nil {
 			fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)

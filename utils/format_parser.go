@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // FormatType 枚举
@@ -108,4 +109,43 @@ func ParseFormat(format string, raw []byte) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("未知format: %s", format)
 	}
+}
+
+// ParseAndCastFormat 统一处理 format 解析和类型强制转换
+// 支持 INT/UINT 结果自动转 int/int16/uint16，其他类型原样返回
+func ParseAndCastFormat(format string, raw interface{}) (interface{}, error) {
+	if format == "" {
+		return raw, nil
+	}
+	upperFmt := strings.ToUpper(format)
+	// 支持直接对 uint16/int16/int/uint 做 INT/UINT 语义转换
+	if upperFmt == "INT" {
+		switch v := raw.(type) {
+		case int16:
+			return int(v), nil
+		case int:
+			return int(int16(v)), nil
+		case uint16:
+			return int(int16(v)), nil
+		case uint:
+			return int(int16(v)), nil
+		}
+	}
+	if upperFmt == "UINT" {
+		switch v := raw.(type) {
+		case uint16:
+			return uint(v), nil
+		case uint:
+			return uint16(v), nil
+		}
+	}
+	// 仅当原始值为[]byte时才解析
+	if bytes, ok := raw.([]byte); ok {
+		val2, err := ParseFormat(format, bytes)
+		if err != nil {
+			return raw, err
+		}
+		return val2, nil
+	}
+	return raw, nil
 }

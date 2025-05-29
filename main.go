@@ -365,11 +365,9 @@ func main() {
 								val := v.Value
 								// 1. format 字段优先解析（如为[]byte）
 								if p.Format != "" {
-									if raw, ok := val.([]byte); ok {
-										val2, err := utils.ParseFormat(p.Format, raw)
-										if err == nil {
-											val = val2
-										}
+									val2, err := utils.ParseAndCastFormat(p.Format, val)
+									if err == nil {
+										val = val2
 									}
 								}
 								// 2. transform 表达式
@@ -393,6 +391,17 @@ func main() {
 									case string:
 										if f, err := strconv.ParseFloat(vv, 64); err == nil {
 											val = math.Round(f*100) / 100
+										}
+									}
+								}
+								// 4. int 类型强制转为 int（四舍五入）
+								if strings.ToLower(p.Type) == "int" {
+									switch vv := val.(type) {
+									case float32, float64:
+										val = int(math.Round(reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()))
+									case string:
+										if f, err := strconv.ParseFloat(vv, 64); err == nil {
+											val = int(math.Round(f))
 										}
 									}
 								}

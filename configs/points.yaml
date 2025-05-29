@@ -7,7 +7,7 @@
       name: "temp_1"
       type: "int"
       unit: "℃"
-      transform: "value * 0.1"
+      transform: "abs(value)"
       format: "INT"
       alarm:
         enable: true
@@ -231,7 +231,7 @@
       name: "temp_1"
       type: "int"
       unit: "℃"
-      transform: "abs(value * 0.1)"
+      transform: ""
       format:  "int"
       alarm:
         enable: true

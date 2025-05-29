@@ -13,6 +13,7 @@ type PointMapping struct {
 	Type      string    `yaml:"type"`      // bool/int/float/string
 	Unit      string    `yaml:"unit"`      // 单位
 	Transform string    `yaml:"transform"` // 转换表达式
+	Format    string    `yaml:"format"`    // 格式化类型（如 INT、Long AB CD 等）
 	Alarm     AlarmRule `yaml:"alarm"`
 }
 

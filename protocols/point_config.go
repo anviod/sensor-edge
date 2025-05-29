@@ -6,4 +6,5 @@ type PointConfig struct {
 	Type      string // 数据类型（如int/float/bool）
 	Unit      string // 单位
 	Transform string // 转换表达式
+	Format    string // 格式化类型（如 INT、Float AB CD、Double AB CD EF GH 等）
 }

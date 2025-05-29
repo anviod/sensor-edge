@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -352,77 +353,129 @@ func main() {
 				values, err := readWithRetry(client, set.DeviceID, pointAddrs, 3)
 				if err != nil {
 					fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
-				} else {
-					pointValues := make(map[string]interface{})
-					// 先用name初始化，保证所有点位都有
+					continue
+				}
+
+				// 构建 PointConfig 列表用于后续格式化/转换
+				pointConfigs := make([]protocols.PointConfig, 0, len(set.Points))
+				for _, p := range set.Points {
+					pointConfigs = append(pointConfigs, protocols.PointConfig{
+						PointID:   p.Name,
+						Address:   p.Address,
+						Type:      p.Type,
+						Unit:      p.Unit,
+						Transform: p.Transform,
+						Format:    p.Format,
+					})
+				}
+
+				pointValues := make(map[string]interface{})
+				// 先用name初始化，保证所有点位都有
+				for _, p := range set.Points {
+					pointValues[p.Name] = nil
+				}
+
+				// 用name为key填充值
+				for _, v := range values {
 					for _, p := range set.Points {
-						pointValues[p.Name] = nil
-					}
-					// 用name为key填充值
-					for _, v := range values {
-						for _, p := range set.Points {
-							if v.PointID == p.Address || v.PointID == p.Name {
-								val := v.Value
-								// 1. format 字段优先解析（如为[]byte）
-								if p.Format != "" {
-									val2, err := utils.ParseAndCastFormat(p.Format, val)
-									if err == nil {
-										val = val2
-									}
-								}
-								// 2. transform 表达式
-								if p.Transform != "" {
-									val2, err := parseTransform(p.Transform, val)
-									if err != nil {
-										val2, err = parseTransformSimple(p.Transform, val)
-									}
-									if err == nil {
-										val = val2
-									}
-								}
-								// 3. float 类型自动保留2位小数
-								if strings.ToLower(p.Type) == "float" {
-									switch vv := val.(type) {
-									case float32, float64:
-										val = math.Round(reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()*100) / 100
-									case int, int32, int64, uint16, uint32, uint64:
-										valf := reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()
-										val = math.Round(valf*100) / 100
-									case string:
-										if f, err := strconv.ParseFloat(vv, 64); err == nil {
-											val = math.Round(f*100) / 100
-										}
-									}
-								}
-								// 4. int 类型强制转为 int（四舍五入）
-								if strings.ToLower(p.Type) == "int" {
-									switch vv := val.(type) {
-									case float32, float64:
-										val = int(math.Round(reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()))
-									case string:
-										if f, err := strconv.ParseFloat(vv, 64); err == nil {
-											val = int(math.Round(f))
-										}
-									}
-								}
-								pointValues[p.Name] = val
-								break
+						if v.PointID == p.Address || v.PointID == p.Name {
+							val := v.Value
+							// 自动兼容驱动返回 [uint16,uint16] 的 float/double 点位
+							if arr, ok := val.([]uint16); ok && len(arr) == 2 && strings.HasPrefix(strings.ToUpper(p.Format), "FLOAT") {
+								b := make([]byte, 4)
+								binary.BigEndian.PutUint16(b[0:2], arr[0])
+								binary.BigEndian.PutUint16(b[2:4], arr[1])
+								val = b
 							}
+							if arr, ok := val.([]uint16); ok && len(arr) == 4 && strings.HasPrefix(strings.ToUpper(p.Format), "DOUBLE") {
+								b := make([]byte, 8)
+								binary.BigEndian.PutUint16(b[0:2], arr[0])
+								binary.BigEndian.PutUint16(b[2:4], arr[1])
+								binary.BigEndian.PutUint16(b[4:6], arr[2])
+								binary.BigEndian.PutUint16(b[6:8], arr[3])
+								val = b
+							}
+							// 兼容驱动直接返回 uint32 且 format 为 float 的情况
+							if u32, ok := val.(uint32); ok && strings.HasPrefix(strings.ToUpper(p.Format), "FLOAT") {
+								b := make([]byte, 4)
+								binary.BigEndian.PutUint32(b, u32)
+								val = b
+							}
+							// 新增：兼容 format 为 float 且只收到单个 uint16 的情况，自动补齐为4字节 float32
+							if strings.HasPrefix(strings.ToUpper(p.Format), "FLOAT") {
+								switch vv := val.(type) {
+								case uint16:
+									b := make([]byte, 4)
+									binary.BigEndian.PutUint16(b[0:2], vv)
+									val = b
+								case []uint16:
+									if len(vv) == 1 {
+										b := make([]byte, 4)
+										binary.BigEndian.PutUint16(b[0:2], vv[0])
+										val = b
+									}
+								}
+							}
+							// 使用 Format 字段进行格式化
+							if p.Format != "" {
+								val2, err := utils.ParseAndCastFormat(p.Format, val)
+								if err == nil {
+									val = val2
+								}
+							}
+							// 使用 Transform 表达式
+							if p.Transform != "" {
+								val2, err := parseTransform(p.Transform, val)
+								if err != nil {
+									val2, err = parseTransformSimple(p.Transform, val)
+								}
+								if err == nil {
+									val = val2
+								}
+							}
+							// 根据 Type 进行类型转换
+							if strings.ToLower(p.Type) == "float" {
+								switch vv := val.(type) {
+								case float32, float64:
+									val = math.Round(reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()*100) / 100
+								case int, int32, int64, uint16, uint32, uint64:
+									valf := reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()
+									val = math.Round(valf*100) / 100
+								case string:
+									if f, err := strconv.ParseFloat(vv, 64); err == nil {
+										val = math.Round(f*100) / 100
+									}
+								}
+							}
+							if strings.ToLower(p.Type) == "int" {
+								switch vv := val.(type) {
+								case float32, float64:
+									val = int(math.Round(reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()))
+								case string:
+									if f, err := strconv.ParseFloat(vv, 64); err == nil {
+										val = int(math.Round(f))
+									}
+								}
+							}
+							pointValues[p.Name] = val
+							// 日志输出也用最终val，保证与上报一致
+							fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, val)
+							break
 						}
-						fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, v.Value)
 					}
-					re.ApplyRules(set.DeviceID, pointValues)
-					payload := uplink.EncodeDataReport(set.DeviceID, pointValues, nil, nil)
-					err = uplinkMgr.SendToAll(payload)
-					if err != nil {
-						fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)
-					} else {
-						fmt.Printf("[Success] 设备 %s 数据上报成功\n", set.DeviceID)
-					}
+				}
+				re.ApplyRules(set.DeviceID, pointValues)
+				payload := uplink.EncodeDataReport(set.DeviceID, pointValues, nil, nil)
+				err = uplinkMgr.SendToAll(payload)
+				if err != nil {
+					fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)
+				} else {
+					fmt.Printf("[Success] 设备 %s 数据上报成功\n", set.DeviceID)
 				}
 				<-ticker.C
 			}
 		}(set, devConf, client, interval)
+
 	}
 
 	// 8. 支持热加载规则（SIGHUP）

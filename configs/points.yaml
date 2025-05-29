@@ -5,21 +5,10 @@
   points:
     - address: "40001"
       name: "temp_1"
-      type: "int"
+      type: "float32"
       unit: "℃"
-      transform: "abs(value)"
-      format: "INT"
-      alarm:
-        enable: true
-        condition: "value > 80"
-        level: "critical"
-        message: "温度过高"
-    - address: "40002"
-      name: "temp_2"
-      type: "int"
-      unit: "℃"
-      transform: "value * 0.1"
-      format: "INT"
+      transform: ""
+      format: "Float AB CD"
       alarm:
         enable: true
         condition: "value > 80"

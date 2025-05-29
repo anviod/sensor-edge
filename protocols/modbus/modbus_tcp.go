@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"sensor-edge/protocols"
@@ -17,7 +18,10 @@ type ModbusTCP struct {
 }
 
 func (m *ModbusTCP) Init(config map[string]interface{}) error {
-	ip := config["ip"].(string)
+	ip, ok := config["ip"].(string)
+	if !ok {
+		return fmt.Errorf("invalid ip address")
+	}
 	var port int
 	switch v := config["port"].(type) {
 	case float64:
@@ -140,66 +144,115 @@ func (m *ModbusTCP) WriteMultipleRegisters(address uint16, values []uint16) erro
 }
 
 func (m *ModbusTCP) Read(deviceID string) ([]protocols.PointValue, error) {
-	// 示例：读取 Holding Registers 10个寄存器，并映射为业务点
-	regs, err := m.ReadHoldingRegisters(0, 10)
+	regs, err := m.client.ReadHoldingRegisters(0, 10)
 	if err != nil {
 		return nil, err
 	}
-	// 这里你可以根据点位映射，将寄存器值转换为 PointValue
-	var values []protocols.PointValue
-	for i, r := range regs {
-		values = append(values, protocols.PointValue{
+	values := make([]protocols.PointValue, len(regs)/2)
+	for i := 0; i < len(regs)/2; i++ {
+		val := binary.BigEndian.Uint16(regs[i*2 : i*2+2])
+		values[i] = protocols.PointValue{
 			PointID:   fmt.Sprintf("reg%d", i),
-			Value:     r,
+			Value:     val,
 			Quality:   "good",
 			Timestamp: time.Now().Unix(),
-		})
+		}
 	}
 	return values, nil
 }
 
-// ReadBatch 批量读取接口，支持自动分段连续区间优化，寄存器最大125，线圈最大64
+// ReadBatch 实现接口要求的方法：接受 []string 类型的点位地址
 func (m *ModbusTCP) ReadBatch(deviceID string, points []string) ([]protocols.PointValue, error) {
+	// 将字符串切片转换为 PointConfig 切片
+	pointConfigs := make([]protocols.PointConfig, len(points))
+	for i, pt := range points {
+		pointConfigs[i] = protocols.PointConfig{
+			PointID: pt,
+			Address: pt,
+			Format:  "", // 默认无格式解析
+		}
+	}
+	return m.ReadBatchWithFormat(deviceID, pointConfigs)
+}
+
+func (m *ModbusTCP) ReadBatchWithFormat(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
 	if len(points) == 0 {
 		return nil, nil
 	}
 	type addrPoint struct {
-		addr uint16
-		name string
+		addr   uint16
+		name   string
+		format string
 	}
 	var addrPoints []addrPoint
 	for _, pt := range points {
-		addr, err := parseAddress(pt)
+		addr, err := parseAddress(pt.Address)
 		if err != nil {
-			return nil, fmt.Errorf("parse address for point %s failed: %v", pt, err)
+			return nil, fmt.Errorf("parse address for point %s failed: %v", pt.Address, err)
 		}
-		addrPoints = append(addrPoints, addrPoint{addr, pt})
+		addrPoints = append(addrPoints, addrPoint{addr, pt.PointID, pt.Format})
 	}
 	sort.Slice(addrPoints, func(i, j int) bool { return addrPoints[i].addr < addrPoints[j].addr })
 
-	var (
-		results []protocols.PointValue
-		n       = len(addrPoints)
-		i       = 0
-	)
+	getRegCount := func(format string) int {
+		f := strings.ToUpper(format)
+		if strings.HasPrefix(f, "FLOAT") || strings.HasPrefix(f, "LONG") {
+			return 2
+		}
+		if strings.HasPrefix(f, "DOUBLE") {
+			return 4
+		}
+		return 1
+	}
+
+	var results []protocols.PointValue
+	n := len(addrPoints)
+	i := 0
 	const maxRegs = 125
 	for i < n {
 		start := i
 		end := i
-		for end+1 < n && addrPoints[end+1].addr == addrPoints[end].addr+1 && (addrPoints[end+1].addr-addrPoints[start].addr+1) <= maxRegs {
-			end++
+		maxAddr := addrPoints[start].addr + uint16(getRegCount(addrPoints[start].format)) - 1
+		for j := i + 1; j < n; j++ {
+			need := getRegCount(addrPoints[j].format)
+			if addrPoints[j].addr <= maxAddr+1 && (addrPoints[j].addr+uint16(need)-addrPoints[start].addr) < maxRegs {
+				if addrPoints[j].addr+uint16(need)-1 > maxAddr {
+					maxAddr = addrPoints[j].addr + uint16(need) - 1
+				}
+				end = j
+			} else {
+				break
+			}
 		}
 		baseAddr := addrPoints[start].addr
-		quantity := addrPoints[end].addr - baseAddr + 1
-		regVals, err := m.ReadHoldingRegisters(baseAddr, quantity)
+		quantity := maxAddr - baseAddr + 1
+		regVals, err := m.client.ReadHoldingRegisters(baseAddr, quantity)
 		if err != nil {
 			return nil, fmt.Errorf("modbus batch read failed: %v", err)
 		}
 		for k := start; k <= end; k++ {
 			offset := addrPoints[k].addr - baseAddr
+			regCount := getRegCount(addrPoints[k].format)
+			if int(offset)+regCount > len(regVals)/2 {
+				results = append(results, protocols.PointValue{
+					PointID:   addrPoints[k].name,
+					Value:     nil,
+					Quality:   "bad",
+					Timestamp: time.Now().Unix(),
+				})
+				continue
+			}
+			vals := make([]uint16, regCount)
+			for r := 0; r < regCount; r++ {
+				vals[r] = binary.BigEndian.Uint16(regVals[(int(offset)+r)*2 : (int(offset)+r)*2+2])
+			}
+			var val interface{} = vals
+			if regCount == 1 {
+				val = vals[0]
+			}
 			results = append(results, protocols.PointValue{
 				PointID:   addrPoints[k].name,
-				Value:     regVals[offset],
+				Value:     val,
 				Quality:   "good",
 				Timestamp: time.Now().Unix(),
 			})
@@ -209,7 +262,37 @@ func (m *ModbusTCP) ReadBatch(deviceID string, points []string) ([]protocols.Poi
 	return results, nil
 }
 
-// parseAddress 将点位字符串如 "40001" 转为寄存器编号
+func (m *ModbusTCP) Write(point string, value interface{}) error {
+	addr, err := parseAddress(point)
+	if err != nil {
+		return err
+	}
+	switch v := value.(type) {
+	case bool:
+		var val uint16 = 0x0000
+		if v {
+			val = 0xFF00
+		}
+		_, err := m.client.WriteSingleCoil(addr, val)
+		return err
+	case uint16:
+		_, err := m.client.WriteSingleRegister(addr, v)
+		return err
+	case int:
+		_, err := m.client.WriteSingleRegister(addr, uint16(v))
+		return err
+	default:
+		return fmt.Errorf("unsupported value type: %T", value)
+	}
+}
+
+func (m *ModbusTCP) Close() error {
+	if m.handler != nil {
+		return m.handler.Close()
+	}
+	return nil
+}
+
 func parseAddress(point string) (uint16, error) {
 	if len(point) < 2 {
 		return 0, fmt.Errorf("invalid point address")
@@ -229,34 +312,12 @@ func parseAddress(point string) (uint16, error) {
 	return uint16(addr - base), nil
 }
 
-func (m *ModbusTCP) Close() error {
-	return m.handler.Close()
-}
-
 func NewModbusTCP() protocols.Protocol {
 	return &ModbusTCP{}
 }
 
 func init() {
 	protocols.Register("modbus_tcp", NewModbusTCP)
-}
-
-// Write 单点写入，支持线圈和寄存器
-func (m *ModbusTCP) Write(point string, value interface{}) error {
-	addr, err := parseAddress(point)
-	if err != nil {
-		return err
-	}
-	switch v := value.(type) {
-	case bool:
-		return m.WriteSingleCoil(addr, v)
-	case uint16:
-		return m.WriteSingleRegister(addr, v)
-	case int:
-		return m.WriteSingleRegister(addr, uint16(v))
-	default:
-		return fmt.Errorf("unsupported value type: %T", value)
-	}
 }
 
 func (m *ModbusTCP) SetSlave(slaveId byte) {

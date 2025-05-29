@@ -157,7 +157,7 @@ func main() {
 
 	fmt.Println("[System] Device collection, edge rule engine & uplink started...")
 
-	// 7. 采集主流程：遍历所有点位配置，自动完成协议参数注入、设备实例化、采集、边缘计算、上报
+	// 7. 采集主流程：每个设备独立采集周期并发采集
 	for _, set := range pointSets {
 		devConf, ok := devMap[set.DeviceID]
 		if !ok {
@@ -210,25 +210,59 @@ func main() {
 			}
 			m.SetSlave(slaveId)
 		}
-		pointAddrs := extractPointAddresses(set.Points)
-		values, err := readWithRetry(client, set.DeviceID, pointAddrs, 3)
-		if err != nil {
-			fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
-			continue
+		// 解析采集周期
+		interval := 5 * time.Second
+		if v, ok := devConf.Config["interval"]; ok {
+			switch vv := v.(type) {
+			case int:
+				interval = time.Duration(vv) * time.Second
+			case float64:
+				interval = time.Duration(int(vv)) * time.Second
+			case string:
+				d, err := time.ParseDuration(vv)
+				if err == nil {
+					interval = d
+				}
+			}
 		}
-		pointValues := make(map[string]interface{})
-		for _, v := range values {
-			pointValues[v.PointID] = v.Value
-			fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, v.Value)
-		}
-		re.ApplyRules(set.DeviceID, pointValues)
-		payload := uplink.EncodeDataReport(set.DeviceID, pointValues, nil, nil)
-		err = uplinkMgr.SendToAll(payload)
-		if err != nil {
-			fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)
-		} else {
-			fmt.Printf("[Success] 设备 %s 数据上报成功\n", set.DeviceID)
-		}
+		go func(set types.DevicePointSet, devConf types.DeviceConfigWithMeta, client protocols.Protocol, interval time.Duration) {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				pointAddrs := extractPointAddresses(set.Points)
+				if m, ok := client.(*modbus.ModbusTCP); ok {
+					slaveId := byte(1)
+					if v, ok := devConf.Config["slave_id"]; ok {
+						switch vv := v.(type) {
+						case int:
+							slaveId = byte(vv)
+						case float64:
+							slaveId = byte(vv)
+						}
+					}
+					m.SetSlave(slaveId)
+				}
+				values, err := readWithRetry(client, set.DeviceID, pointAddrs, 3)
+				if err != nil {
+					fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
+				} else {
+					pointValues := make(map[string]interface{})
+					for _, v := range values {
+						pointValues[v.PointID] = v.Value
+						fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, v.Value)
+					}
+					re.ApplyRules(set.DeviceID, pointValues)
+					payload := uplink.EncodeDataReport(set.DeviceID, pointValues, nil, nil)
+					err = uplinkMgr.SendToAll(payload)
+					if err != nil {
+						fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)
+					} else {
+						fmt.Printf("[Success] 设备 %s 数据上报成功\n", set.DeviceID)
+					}
+				}
+				<-ticker.C
+			}
+		}(set, devConf, client, interval)
 	}
 
 	// 8. 支持热加载规则（SIGHUP）

@@ -247,8 +247,17 @@ func main() {
 					fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
 				} else {
 					pointValues := make(map[string]interface{})
+					for _, p := range set.Points {
+						pointValues[p.Name] = nil
+					}
 					for _, v := range values {
-						pointValues[v.PointID] = v.Value
+						// 匹配点位name
+						for _, p := range set.Points {
+							if v.PointID == p.Address || v.PointID == p.Name {
+								pointValues[p.Name] = v.Value
+								break
+							}
+						}
 						fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, v.Value)
 					}
 					re.ApplyRules(set.DeviceID, pointValues)

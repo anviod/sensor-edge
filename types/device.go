@@ -1,13 +1,16 @@
 package types
 
 type DeviceMeta struct {
-	ID           string `yaml:"id" json:"id"`
-	Name         string `yaml:"name" json:"name"`
-	Description  string `yaml:"description" json:"description"`
-	Protocol     string `yaml:"protocol" json:"protocol"`
-	ProtocolName string `yaml:"protocol_name" json:"protocol_name"`
-	Interval     int    `yaml:"interval" json:"interval"`
-	EnablePing   bool   `yaml:"enable_ping" json:"enable_ping"`
+	ID           string `yaml:"id"`
+	Name         string `yaml:"name"`
+	Description  string `yaml:"description"`
+	Protocol     string `yaml:"protocol"`
+	ProtocolName string `yaml:"protocol_name"`
+	Interval     string `yaml:"interval"`
+	EnablePing   bool   `yaml:"enable_ping"`
+	IP           string `yaml:"ip"`
+	Port         int    `yaml:"port"`
+	SlaveID      byte   `yaml:"slave_id"` // 新增字段
 }
 
 type DeviceConfigWithMeta struct {

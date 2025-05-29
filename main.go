@@ -2,17 +2,24 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"reflect"
+	"regexp"
 	"sensor-edge/config"
 	"sensor-edge/edgecompute"
 	"sensor-edge/protocols"
 	"sensor-edge/protocols/modbus"
 	"sensor-edge/types"
 	"sensor-edge/uplink"
+	"sensor-edge/utils"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Knetic/govaluate"
 
 	"gopkg.in/yaml.v3"
 )
@@ -116,6 +123,106 @@ func getOrCreateClient(protocol string, config map[string]interface{}) (protocol
 	}
 	clientCache[key] = client
 	return client, nil
+}
+
+// parseTransform 支持复杂表达式和内置函数
+func parseTransform(expr string, value interface{}) (interface{}, error) {
+	parameters := make(map[string]interface{})
+	var v float64
+	switch vv := value.(type) {
+	case int, int32, int64, float32, float64, uint16, uint32, uint64:
+		v = reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()
+	case string:
+		var err error
+		v, err = strconv.ParseFloat(vv, 64)
+		if err != nil {
+			return value, err
+		}
+	default:
+		return value, fmt.Errorf("unsupported value type: %T", value)
+	}
+	parameters["value"] = v
+	functions := map[string]govaluate.ExpressionFunction{
+		"abs": func(args ...interface{}) (interface{}, error) {
+			return math.Abs(args[0].(float64)), nil
+		},
+		"sqrt": func(args ...interface{}) (interface{}, error) {
+			return math.Sqrt(args[0].(float64)), nil
+		},
+		"log": func(args ...interface{}) (interface{}, error) {
+			return math.Log(args[0].(float64)), nil
+		},
+		"min": func(args ...interface{}) (interface{}, error) {
+			return math.Min(args[0].(float64), args[1].(float64)), nil
+		},
+		"max": func(args ...interface{}) (interface{}, error) {
+			return math.Max(args[0].(float64), args[1].(float64)), nil
+		},
+	}
+	expression, err := govaluate.NewEvaluableExpressionWithFunctions(expr, functions)
+	if err != nil {
+		return value, err
+	}
+	result, err := expression.Evaluate(parameters)
+	if err != nil {
+		return value, err
+	}
+	return result, nil
+}
+
+// parseTransformSimple 支持如 "value * 0.1" 的简单表达式
+func parseTransformSimple(expr string, value interface{}) (interface{}, error) {
+	re := regexp.MustCompile(`(?i)^value\s*([\*\/+\-])\s*([0-9.]+)$`)
+	matches := re.FindStringSubmatch(strings.TrimSpace(expr))
+	if len(matches) != 3 {
+		return value, nil // 不支持的表达式，原样返回
+	}
+	op := matches[1]
+	numStr := matches[2]
+	num, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return value, nil
+	}
+	var v float64
+	switch vv := value.(type) {
+	case int:
+		v = float64(vv)
+	case int32:
+		v = float64(vv)
+	case int64:
+		v = float64(vv)
+	case float32:
+		v = float64(vv)
+	case float64:
+		v = vv
+	case uint16:
+		v = float64(vv)
+	case uint32:
+		v = float64(vv)
+	case uint64:
+		v = float64(vv)
+	case string:
+		v, err = strconv.ParseFloat(vv, 64)
+		if err != nil {
+			return value, nil
+		}
+	default:
+		return value, nil
+	}
+	switch op {
+	case "*":
+		return v * num, nil
+	case "/":
+		if num == 0 {
+			return value, nil
+		}
+		return v / num, nil
+	case "+":
+		return v + num, nil
+	case "-":
+		return v - num, nil
+	}
+	return value, nil
 }
 
 func main() {
@@ -247,14 +354,49 @@ func main() {
 					fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
 				} else {
 					pointValues := make(map[string]interface{})
+					// 先用name初始化，保证所有点位都有
 					for _, p := range set.Points {
 						pointValues[p.Name] = nil
 					}
+					// 用name为key填充值
 					for _, v := range values {
-						// 匹配点位name
 						for _, p := range set.Points {
 							if v.PointID == p.Address || v.PointID == p.Name {
-								pointValues[p.Name] = v.Value
+								val := v.Value
+								// 1. format 字段优先解析（如为[]byte）
+								if p.Format != "" {
+									if raw, ok := val.([]byte); ok {
+										val2, err := utils.ParseFormat(p.Format, raw)
+										if err == nil {
+											val = val2
+										}
+									}
+								}
+								// 2. transform 表达式
+								if p.Transform != "" {
+									val2, err := parseTransform(p.Transform, val)
+									if err != nil {
+										val2, err = parseTransformSimple(p.Transform, val)
+									}
+									if err == nil {
+										val = val2
+									}
+								}
+								// 3. float 类型自动保留2位小数
+								if strings.ToLower(p.Type) == "float" {
+									switch vv := val.(type) {
+									case float32, float64:
+										val = math.Round(reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()*100) / 100
+									case int, int32, int64, uint16, uint32, uint64:
+										valf := reflect.ValueOf(vv).Convert(reflect.TypeOf(float64(0))).Float()
+										val = math.Round(valf*100) / 100
+									case string:
+										if f, err := strconv.ParseFloat(vv, 64); err == nil {
+											val = math.Round(f*100) / 100
+										}
+									}
+								}
+								pointValues[p.Name] = val
 								break
 							}
 						}

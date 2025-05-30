@@ -5,7 +5,7 @@
   points:
     - address: "40001"
       name: "temp_1"
-      type: "float32"
+      type: "float64"
       unit: "℃"
       transform: ""
       format: "Float AB CD"

@@ -198,10 +198,11 @@ func main() {
 	// 4. 加载点位物模型映射
 	pointSets, _ := config.LoadPointMappings("configs/points.yaml")
 
-	// 5. 加载边缘计算规则
-	aggRules, _ := config.LoadAggregateRules("configs/edge_rules.yaml")
-	alarmRules, _ := config.LoadAlarmRulesEdge("configs/edge_rules.yaml")
-	linkageRules, _ := config.LoadLinkageRules("configs/edge_rules.yaml")
+	// 5. 加载新版分组式边缘规则
+	devRules, _ := config.LoadDeviceEdgeRules("configs/edge_rules.yaml")
+	aggRules := config.ExtractAggregateRules(devRules)
+	alarmRules := config.ExtractAlarmRules(devRules)
+	linkageRules := config.ExtractLinkageRules(devRules)
 	re := edgecompute.NewRuleEngine(aggRules, alarmRules, linkageRules)
 
 	// 6. 加载上行通道配置
@@ -455,12 +456,10 @@ func main() {
 	signal.Notify(c, syscall.SIGHUP)
 	go func() {
 		for range c {
-			aggRules, _ = config.LoadAggregateRules("configs/edge_rules.yaml")
-			alarmRules, _ = config.LoadAlarmRulesEdge("configs/edge_rules.yaml")
-			linkageRules, _ = config.LoadLinkageRules("configs/edge_rules.yaml")
-			re.AggRules = aggRules
-			re.AlarmRules = alarmRules
-			re.LinkageRules = linkageRules
+			devRules, _ := config.LoadDeviceEdgeRules("configs/edge_rules.yaml")
+			re.AggRules = config.ExtractAggregateRules(devRules)
+			re.AlarmRules = config.ExtractAlarmRules(devRules)
+			re.LinkageRules = config.ExtractLinkageRules(devRules)
 			fmt.Println("[System] Edge rules reloaded!")
 		}
 	}()

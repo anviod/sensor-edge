@@ -58,3 +58,13 @@ func (b *PointBuffer) Avg() float64 {
 	}
 	return sum / float64(len(b.Values))
 }
+
+// 新版分组式边缘规则结构体
+// 支持 device_id 下聚合、报警、联动多类型规则
+
+type DeviceEdgeRules struct {
+	DeviceID  string          `yaml:"device_id"`
+	Aggregate []AggregateRule `yaml:"aggregate,omitempty"`
+	Alarm     []AlarmRuleEdge `yaml:"alarm,omitempty"`
+	Linkage   []LinkageRule   `yaml:"linkage,omitempty"`
+}

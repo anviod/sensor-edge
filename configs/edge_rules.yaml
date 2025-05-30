@@ -1,26 +1,32 @@
-- id: "rule_avg_temp"
-  description: "统计温度平均值"
-  type: "aggregate"
-  device_id: "sensor_modbus_2"
-  point: "temp_1"
-  method: "avg"
-  window: 5
+- device_id: "sensor_modbus_1"
+  aggregate:
+    - point: "temp_1"
+      description: "统计温度平均值"
+      method: "avg"
+      window: 5
+  alarm:
+    - point: "temp_1"
+      description: "温度传感器高温报警"
+      condition: "value > 50.0"
+      level: "warning"
+      message: "高温报警"
+    - point: "temp_2"
+      description: "温度传感器高温报警"
+      condition: "value > 50.0"
+      level: "warning"
+      message: "高温报警"
 
-- id: "rule_alarm_temp"
-  description: "温度传感器高温报警"
-  type: "alarm"
-  device_id: "sensor_modbus_1"
-  point: "temp_1"
-  condition: "value > 50.0"
-  level: "warning"
-  message: "高温报警"
-
-- id: "rule_linkage_pump"
-  description: "风机故障→关闭水泵"
-  type: "linkage"
-  source_device: "plc1"
-  source_point: "fan_status"
-  condition: "value == false"
-  action_device: "plc2"
-  action_address: "d200"
-  action_value: 0
+- device_id: "sensor_modbus_2"
+  alarm:
+    - point: "temp_3"
+      description: "温度传感器高温报警"
+      condition: "value > 50.0"
+      level: "warning"
+      message: "温度传感器2 高温报警"
+  linkage:
+    - source_point: "temp_3"
+      description: "高温报警→打开风机"
+      condition: "value > 50.0"
+      action_device: "plc2"
+      action_address: "d200"
+      action_value: 1

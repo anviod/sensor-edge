@@ -103,10 +103,14 @@ func (r *RuleEngine) ApplyRules(deviceID string, pointMap map[string]any) {
 			if !ok {
 				continue
 			}
+			fmt.Printf("[DEBUG] 联动规则检查: source_device=%s source_point=%s val=%v(%T) expr=%s\n", deviceID, rule.SourcePoint, val, val, rule.Condition)
 			triggered, err := mapping.EvalExpression(rule.Condition, val)
-			if err == nil && triggered == true {
-				fmt.Printf("[Linkage] 执行控制 %s.%s ← %v\n", rule.ActionDevice, rule.ActionAddress, rule.ActionValue)
-				// 可调用设备写入接口
+			fmt.Printf("[DEBUG] 联动EvalExpression result: triggered=%v(%T) err=%v\n", triggered, triggered, err)
+			if err == nil {
+				if b, ok := triggered.(bool); ok && b {
+					fmt.Printf("[Linkage] 执行控制 %s.%s ← %v\n", rule.ActionDevice, rule.ActionAddress, rule.ActionValue)
+					// 可调用设备写入接口
+				}
 			}
 		}
 	}

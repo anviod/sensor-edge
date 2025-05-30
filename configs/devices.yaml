@@ -3,7 +3,7 @@
   name: "Modbus Sensor 1"
   protocol: modbus_tcp
   protocol_name: modbus_tcp_name_1
-  interval: 5s
+  interval: 10s
   enable_ping: true
   description: "Modbus TCP device"
   ip: 127.0.0.1
@@ -13,7 +13,7 @@
   name: "Modbus Sensor 2"
   protocol: modbus_tcp
   protocol_name: modbus_tcp_name_1
-  interval: 20s
+  interval: 10s
   enable_ping: true
   description: "Modbus TCP device"
   ip: 127.0.0.1

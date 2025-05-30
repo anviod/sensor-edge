@@ -7,11 +7,11 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
-	"regexp"
 	"sensor-edge/config"
 	"sensor-edge/edgecompute"
 	"sensor-edge/protocols"
 	"sensor-edge/protocols/modbus"
+	"sensor-edge/schema"
 	"sensor-edge/types"
 	"sensor-edge/uplink"
 	"sensor-edge/utils"
@@ -169,61 +169,6 @@ func parseTransform(expr string, value interface{}) (interface{}, error) {
 		return value, err
 	}
 	return result, nil
-}
-
-// parseTransformSimple 支持如 "value * 0.1" 的简单表达式
-func parseTransformSimple(expr string, value interface{}) (interface{}, error) {
-	re := regexp.MustCompile(`(?i)^value\s*([\*\/+\-])\s*([0-9.]+)$`)
-	matches := re.FindStringSubmatch(strings.TrimSpace(expr))
-	if len(matches) != 3 {
-		return value, nil // 不支持的表达式，原样返回
-	}
-	op := matches[1]
-	numStr := matches[2]
-	num, err := strconv.ParseFloat(numStr, 64)
-	if err != nil {
-		return value, nil
-	}
-	var v float64
-	switch vv := value.(type) {
-	case int:
-		v = float64(vv)
-	case int32:
-		v = float64(vv)
-	case int64:
-		v = float64(vv)
-	case float32:
-		v = float64(vv)
-	case float64:
-		v = vv
-	case uint16:
-		v = float64(vv)
-	case uint32:
-		v = float64(vv)
-	case uint64:
-		v = float64(vv)
-	case string:
-		v, err = strconv.ParseFloat(vv, 64)
-		if err != nil {
-			return value, nil
-		}
-	default:
-		return value, nil
-	}
-	switch op {
-	case "*":
-		return v * num, nil
-	case "/":
-		if num == 0 {
-			return value, nil
-		}
-		return v / num, nil
-	case "+":
-		return v + num, nil
-	case "-":
-		return v - num, nil
-	}
-	return value, nil
 }
 
 func main() {
@@ -425,13 +370,19 @@ func main() {
 							}
 							// 使用 Transform 表达式
 							if p.Transform != "" {
-								val2, err := parseTransform(p.Transform, val)
+								val, err := parseTransform(p.Transform, val)
 								if err != nil {
-									val2, err = parseTransformSimple(p.Transform, val)
+
+									fmt.Printf("[WARN] 设备 %s 点位 %s 转换失败: %v\n", set.DeviceID, p.Name, err)
+								} else {
+									// 如果转换结果是字符串，尝试转换为 float
+									if strVal, ok := val.(string); ok {
+										if f, err := strconv.ParseFloat(strVal, 64); err == nil {
+											val = f
+										}
+									}
 								}
-								if err == nil {
-									val = val2
-								}
+
 							}
 							// 根据 Type 进行类型转换
 							if strings.ToLower(p.Type) == "float" {
@@ -464,8 +415,29 @@ func main() {
 						}
 					}
 				}
-				re.ApplyRules(set.DeviceID, pointValues)
-				payload := uplink.EncodeDataReport(set.DeviceID, pointValues, nil, nil)
+				// 先推进边缘规则引擎，聚合窗口和报警状态
+				if re != nil {
+					re.ApplyRules(set.DeviceID, pointValues)
+				}
+				// 边缘规则引擎处理，收集报警和聚合结果
+				alarms := []schema.AlarmInfo{}
+				metrics := map[string]interface{}{}
+				if re != nil {
+					// 1. 聚合规则（如 avg）
+					for _, rule := range re.AggRules {
+						if rule.DeviceID == set.DeviceID {
+							key := set.DeviceID + "." + rule.Point
+							buf, ok := re.Buffers[key]
+							if ok && rule.Method == "avg" {
+								metrics[rule.Point+"_avg"] = buf.Avg()
+							}
+						}
+					}
+					// 2. 直接读取规则引擎的 LastAlarms
+					alarms = append(alarms, re.LastAlarms...)
+				}
+				// 上报数据+报警+聚合
+				payload := uplink.EncodeDataReport(set.DeviceID, pointValues, alarms, metrics)
 				err = uplinkMgr.SendToAll(payload)
 				if err != nil {
 					fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)

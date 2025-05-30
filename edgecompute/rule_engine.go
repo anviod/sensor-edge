@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sensor-edge/mapping"
+	"sensor-edge/schema"
 	"sensor-edge/types"
 	"time"
 )
@@ -16,6 +17,7 @@ type RuleEngine struct {
 	AlarmRules   []types.AlarmRuleEdge
 	LinkageRules []types.LinkageRule
 	Buffers      map[string]*types.PointBuffer // key: device.point
+	LastAlarms   []schema.AlarmInfo
 }
 
 // NewRuleEngine 创建新的规则引擎实例
@@ -30,6 +32,8 @@ func NewRuleEngine(agg []types.AggregateRule, alarm []types.AlarmRuleEdge, linka
 
 // ApplyRules 应用所有边缘规则
 func (r *RuleEngine) ApplyRules(deviceID string, pointMap map[string]any) {
+	// 清空上次报警
+	r.LastAlarms = nil
 	// 1. 聚合规则
 	for _, rule := range r.AggRules {
 		if rule.DeviceID == deviceID {
@@ -60,9 +64,35 @@ func (r *RuleEngine) ApplyRules(deviceID string, pointMap map[string]any) {
 			if !ok {
 				continue
 			}
+			// 类型兼容：govaluate 只认 float64
+			switch v := val.(type) {
+			case float32:
+				val = float64(v)
+			case int:
+				val = float64(v)
+			case int32:
+				val = float64(v)
+			case int64:
+				val = float64(v)
+			case uint16:
+				val = float64(v)
+			case uint32:
+				val = float64(v)
+			case uint64:
+				val = float64(v)
+			}
+			fmt.Printf("[DEBUG] 报警规则检查: device=%s point=%s val=%v(%T) expr=%s\n", deviceID, rule.Point, val, val, rule.Condition)
 			triggered, err := mapping.EvalExpression(rule.Condition, val)
-			if err == nil && triggered == true {
-				fmt.Printf("[EdgeCalc] %s - %s: %s\n", rule.Description, rule.Level, rule.Message)
+			fmt.Printf("[DEBUG] EvalExpression result: triggered=%v(%T) err=%v\n", triggered, triggered, err)
+			if err == nil {
+				if b, ok := triggered.(bool); ok && b {
+					fmt.Printf("[EdgeCalc] %s - %s: %s\n", rule.Description, rule.Level, rule.Message)
+					r.LastAlarms = append(r.LastAlarms, schema.AlarmInfo{
+						Name:    rule.Point,
+						Level:   rule.Level,
+						Message: rule.Message,
+					})
+				}
 			}
 		}
 	}

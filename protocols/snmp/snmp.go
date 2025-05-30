@@ -55,13 +55,13 @@ func (s *SNMPClient) Read(deviceID string) ([]protocols.PointValue, error) {
 }
 
 // ReadBatch 批量读取接口，返回指定数据点
-func (s *SNMPClient) ReadBatch(deviceID string, points []string) ([]protocols.PointValue, error) {
+func (s *SNMPClient) ReadBatch(deviceID string, function string, points []string) ([]protocols.PointValue, error) {
+	// function 参数暂未用到，保留兼容
 	if len(points) == 0 {
 		return nil, nil
 	}
 	var values []protocols.PointValue
 	for _, pt := range points {
-		// 这里只做示例，实际应根据点位OID组装
 		result, err := s.client.Get([]string{pt})
 		if err != nil || len(result.Variables) == 0 {
 			values = append(values, protocols.PointValue{PointID: pt, Quality: "bad", Value: nil, Timestamp: time.Now().Unix()})

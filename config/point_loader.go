@@ -19,3 +19,14 @@ func LoadPointMappings(file string) ([]types.DevicePointSet, error) {
 	err = yaml.Unmarshal(data, &sets)
 	return sets, err
 }
+
+// 新增：加载三层结构的点位配置
+func LoadPointMappingsV2(file string) ([]types.DevicePointSetV2, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	var sets []types.DevicePointSetV2
+	err = yaml.Unmarshal(data, &sets)
+	return sets, err
+}

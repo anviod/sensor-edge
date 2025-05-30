@@ -78,14 +78,13 @@ func init() {
 }
 
 // ReadBatch 批量读取接口，返回指定数据点
-func (c *S7Client) ReadBatch(deviceID string, points []string) ([]protocols.PointValue, error) {
+func (c *S7Client) ReadBatch(deviceID string, function string, points []string) ([]protocols.PointValue, error) {
+	// function 参数暂未用到，保留兼容
 	if len(points) == 0 {
 		return nil, nil
 	}
-	// 简单实现：循环调用单点读取（假设有 ReadPoint 方法，实际需根据点位类型实现）
 	var values []protocols.PointValue
 	for _, pt := range points {
-		// 这里只做示例，实际应根据点位类型和地址解析
 		buffer := make([]byte, 2)
 		err := c.client.AGReadDB(1, 0, 2, buffer)
 		if err != nil {

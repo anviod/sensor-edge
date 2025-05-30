@@ -27,6 +27,6 @@
     - source_point: "temp_3"
       description: "高温报警→打开风机"
       condition: "value > 50.0"
-      action_device: "plc2"
-      action_address: "d200"
-      action_value: 1
+      action_device: "sensor_modbus_1"
+      action_address: "temp_10"
+      action_value: 19

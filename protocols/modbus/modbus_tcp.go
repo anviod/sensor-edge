@@ -161,9 +161,12 @@ func (m *ModbusTCP) Read(deviceID string) ([]protocols.PointValue, error) {
 	return values, nil
 }
 
-// ReadBatch 实现接口要求的方法：接受 []string 类型的点位地址
-func (m *ModbusTCP) ReadBatch(deviceID string, points []string) ([]protocols.PointValue, error) {
-	// 将字符串切片转换为 PointConfig 切片
+// ReadBatch 实现接口要求的方法：接受功能码和点位地址
+func (m *ModbusTCP) ReadBatch(deviceID string, function string, points []string) ([]protocols.PointValue, error) {
+	// 仅支持03/04/01/02功能码，默认03
+	if function == "" {
+		function = "03"
+	}
 	pointConfigs := make([]protocols.PointConfig, len(points))
 	for i, pt := range points {
 		pointConfigs[i] = protocols.PointConfig{
@@ -172,9 +175,22 @@ func (m *ModbusTCP) ReadBatch(deviceID string, points []string) ([]protocols.Poi
 			Format:  "", // 默认无格式解析
 		}
 	}
-	return m.ReadBatchWithFormat(deviceID, pointConfigs)
+	// 按功能码分流
+	switch function {
+	case "03":
+		return m.ReadBatchWithFormat(deviceID, pointConfigs)
+	case "04":
+		return m.readInputRegistersBatch(deviceID, pointConfigs)
+	case "01":
+		return m.readCoilsBatch(deviceID, pointConfigs)
+	case "02":
+		return m.readDiscreteInputsBatch(deviceID, pointConfigs)
+	default:
+		return m.ReadBatchWithFormat(deviceID, pointConfigs)
+	}
 }
 
+// 批量读取保持寄存器（功能码03），支持格式化
 func (m *ModbusTCP) ReadBatchWithFormat(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
 	if len(points) == 0 {
 		return nil, nil
@@ -250,6 +266,207 @@ func (m *ModbusTCP) ReadBatchWithFormat(deviceID string, points []protocols.Poin
 			if regCount == 1 {
 				val = vals[0]
 			}
+			results = append(results, protocols.PointValue{
+				PointID:   addrPoints[k].name,
+				Value:     val,
+				Quality:   "good",
+				Timestamp: time.Now().Unix(),
+			})
+		}
+		i = end + 1
+	}
+	return results, nil
+}
+
+// 新增：批量读取输入寄存器（功能码04）
+func (m *ModbusTCP) readInputRegistersBatch(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
+	// 逻辑与 ReadBatchWithFormat 类似，只是调用 ReadInputRegisters
+	if len(points) == 0 {
+		return nil, nil
+	}
+	type addrPoint struct {
+		addr   uint16
+		name   string
+		format string
+	}
+	var addrPoints []addrPoint
+	for _, pt := range points {
+		addr, err := parseAddress(pt.Address)
+		if err != nil {
+			return nil, fmt.Errorf("parse address for point %s failed: %v", pt.Address, err)
+		}
+		addrPoints = append(addrPoints, addrPoint{addr, pt.PointID, pt.Format})
+	}
+	sort.Slice(addrPoints, func(i, j int) bool { return addrPoints[i].addr < addrPoints[j].addr })
+
+	getRegCount := func(format string) int {
+		f := strings.ToUpper(format)
+		if strings.HasPrefix(f, "FLOAT") || strings.HasPrefix(f, "LONG") {
+			return 2
+		}
+		if strings.HasPrefix(f, "DOUBLE") {
+			return 4
+		}
+		return 1
+	}
+
+	var results []protocols.PointValue
+	n := len(addrPoints)
+	i := 0
+	const maxRegs = 125
+	for i < n {
+		start := i
+		end := i
+		maxAddr := addrPoints[start].addr + uint16(getRegCount(addrPoints[start].format)) - 1
+		for j := i + 1; j < n; j++ {
+			need := getRegCount(addrPoints[j].format)
+			if addrPoints[j].addr <= maxAddr+1 && (addrPoints[j].addr+uint16(need)-addrPoints[start].addr) < maxRegs {
+				if addrPoints[j].addr+uint16(need)-1 > maxAddr {
+					maxAddr = addrPoints[j].addr + uint16(need) - 1
+				}
+				end = j
+			} else {
+				break
+			}
+		}
+		baseAddr := addrPoints[start].addr
+		quantity := maxAddr - baseAddr + 1
+		regVals, err := m.client.ReadInputRegisters(baseAddr, quantity)
+		if err != nil {
+			return nil, fmt.Errorf("modbus input batch read failed: %v", err)
+		}
+		for k := start; k <= end; k++ {
+			offset := addrPoints[k].addr - baseAddr
+			regCount := getRegCount(addrPoints[k].format)
+			if int(offset)+regCount > len(regVals)/2 {
+				results = append(results, protocols.PointValue{
+					PointID:   addrPoints[k].name,
+					Value:     nil,
+					Quality:   "bad",
+					Timestamp: time.Now().Unix(),
+				})
+				continue
+			}
+			vals := make([]uint16, regCount)
+			for r := 0; r < regCount; r++ {
+				vals[r] = binary.BigEndian.Uint16(regVals[(int(offset)+r)*2 : (int(offset)+r)*2+2])
+			}
+			var val interface{} = vals
+			if regCount == 1 {
+				val = vals[0]
+			}
+			results = append(results, protocols.PointValue{
+				PointID:   addrPoints[k].name,
+				Value:     val,
+				Quality:   "good",
+				Timestamp: time.Now().Unix(),
+			})
+		}
+		i = end + 1
+	}
+	return results, nil
+}
+
+// 新增：批量读取线圈（功能码01）
+func (m *ModbusTCP) readCoilsBatch(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
+	if len(points) == 0 {
+		return nil, nil
+	}
+	type addrPoint struct {
+		addr uint16
+		name string
+	}
+	var addrPoints []addrPoint
+	for _, pt := range points {
+		addr, err := parseAddress(pt.Address)
+		if err != nil {
+			return nil, fmt.Errorf("parse address for point %s failed: %v", pt.Address, err)
+		}
+		addrPoints = append(addrPoints, addrPoint{addr, pt.PointID})
+	}
+	sort.Slice(addrPoints, func(i, j int) bool { return addrPoints[i].addr < addrPoints[j].addr })
+
+	var results []protocols.PointValue
+	n := len(addrPoints)
+	i := 0
+	const maxCoils = 2000
+	for i < n {
+		start := i
+		end := i
+		maxAddr := addrPoints[start].addr
+		for j := i + 1; j < n; j++ {
+			if addrPoints[j].addr == maxAddr+1 && (addrPoints[j].addr-addrPoints[start].addr) < maxCoils {
+				maxAddr = addrPoints[j].addr
+				end = j
+			} else {
+				break
+			}
+		}
+		baseAddr := addrPoints[start].addr
+		quantity := maxAddr - baseAddr + 1
+		coils, err := m.client.ReadCoils(baseAddr, quantity)
+		if err != nil {
+			return nil, fmt.Errorf("modbus coils batch read failed: %v", err)
+		}
+		for k := start; k <= end; k++ {
+			offset := addrPoints[k].addr - baseAddr
+			val := (coils[offset/8]>>(offset%8))&0x01 == 0x01
+			results = append(results, protocols.PointValue{
+				PointID:   addrPoints[k].name,
+				Value:     val,
+				Quality:   "good",
+				Timestamp: time.Now().Unix(),
+			})
+		}
+		i = end + 1
+	}
+	return results, nil
+}
+
+// 新增：批量读取离散输入（功能码02）
+func (m *ModbusTCP) readDiscreteInputsBatch(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
+	if len(points) == 0 {
+		return nil, nil
+	}
+	type addrPoint struct {
+		addr uint16
+		name string
+	}
+	var addrPoints []addrPoint
+	for _, pt := range points {
+		addr, err := parseAddress(pt.Address)
+		if err != nil {
+			return nil, fmt.Errorf("parse address for point %s failed: %v", pt.Address, err)
+		}
+		addrPoints = append(addrPoints, addrPoint{addr, pt.PointID})
+	}
+	sort.Slice(addrPoints, func(i, j int) bool { return addrPoints[i].addr < addrPoints[j].addr })
+
+	var results []protocols.PointValue
+	n := len(addrPoints)
+	i := 0
+	const maxInputs = 2000
+	for i < n {
+		start := i
+		end := i
+		maxAddr := addrPoints[start].addr
+		for j := i + 1; j < n; j++ {
+			if addrPoints[j].addr == maxAddr+1 && (addrPoints[j].addr-addrPoints[start].addr) < maxInputs {
+				maxAddr = addrPoints[j].addr
+				end = j
+			} else {
+				break
+			}
+		}
+		baseAddr := addrPoints[start].addr
+		quantity := maxAddr - baseAddr + 1
+		inputs, err := m.client.ReadDiscreteInputs(baseAddr, quantity)
+		if err != nil {
+			return nil, fmt.Errorf("modbus discrete inputs batch read failed: %v", err)
+		}
+		for k := start; k <= end; k++ {
+			offset := addrPoints[k].addr - baseAddr
+			val := (inputs[offset/8]>>(offset%8))&0x01 == 0x01
 			results = append(results, protocols.PointValue{
 				PointID:   addrPoints[k].name,
 				Value:     val,

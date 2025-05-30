@@ -12,8 +12,8 @@ type PointValue struct {
 type Protocol interface {
 	Init(config map[string]interface{}) error
 	Read(deviceID string) ([]PointValue, error)
-	//批量读取接口，返回多个数据点
-	ReadBatch(deviceID string, points []string) ([]PointValue, error) // 批量读取接口，返回指定数据点
+	// 批量读取接口，增加 function 功能码参数
+	ReadBatch(deviceID string, function string, points []string) ([]PointValue, error)
 	Write(point string, value interface{}) error // 新增写入接口，便于联动控制
 	Close() error
 }

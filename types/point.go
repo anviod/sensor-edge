@@ -23,3 +23,19 @@ type DevicePointSet struct {
 	ProtocolName string         `yaml:"protocol_name"`
 	Points       []PointMapping `yaml:"points"`
 }
+
+// 新增：功能码分组结构体，支持三层结构
+
+type FunctionPointGroup struct {
+	Function string         `yaml:"function"`
+	Points   []PointMapping `yaml:"points"`
+}
+
+// 新版三层结构：设备-功能码-点位
+
+type DevicePointSetV2 struct {
+	DeviceID     string               `yaml:"device_id"`
+	Protocol     string               `yaml:"protocol"`
+	ProtocolName string               `yaml:"protocol_name"`
+	Functions    []FunctionPointGroup `yaml:"functions"`
+}

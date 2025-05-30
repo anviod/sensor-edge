@@ -49,13 +49,13 @@ func (s *SLMPClient) Read(deviceID string) ([]protocols.PointValue, error) {
 }
 
 // ReadBatch 批量读取接口，返回指定数据点
-func (s *SLMPClient) ReadBatch(deviceID string, points []string) ([]protocols.PointValue, error) {
+func (s *SLMPClient) ReadBatch(deviceID string, function string, points []string) ([]protocols.PointValue, error) {
+	// function 参数暂未用到，保留兼容
 	if len(points) == 0 {
 		return nil, nil
 	}
 	var values []protocols.PointValue
 	for _, pt := range points {
-		// 这里只做示例，实际应根据点位类型和地址组装SLMP报文
 		readCommand := []byte{
 			0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00,
 			0x0C, 0x00, 0x10, 0x00,

@@ -19,7 +19,7 @@ func (f *UplinkFactory) NewUplink(typ string) Uplink {
 	case "mqtt":
 		return &mqtt.MqttUplink{}
 	case "http":
-		return &http.HTTPClientUplink{}
+		return &http.HttpUplink{}
 	case "nats":
 		return &nats.NatsUplink{}
 	case "redis":

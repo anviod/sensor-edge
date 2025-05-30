@@ -6,8 +6,9 @@ import (
 	"log"
 	"os"
 	"sensor-edge/config"
-
+	httpuplink "sensor-edge/uplink/http"
 	kafkauplink "sensor-edge/uplink/kafka"
+	mqttlink "sensor-edge/uplink/mqtt"
 	natsuplink "sensor-edge/uplink/nats"
 	redisuplink "sensor-edge/uplink/redis"
 
@@ -31,10 +32,8 @@ func NewUplinkManagerFromConfig(cfgs []config.UplinkConfig) *UplinkManager {
 		switch c.Type {
 		case "mqtt":
 			opts := mqtt.NewClientOptions().AddBroker(c.Broker).SetClientID(c.ClientID)
-			if c.Username != "" {
+			if c.Username != "" && c.Password != "" {
 				opts.SetUsername(c.Username)
-			}
-			if c.Password != "" {
 				opts.SetPassword(c.Password)
 			}
 			client := mqtt.NewClient(opts)
@@ -42,9 +41,13 @@ func NewUplinkManagerFromConfig(cfgs []config.UplinkConfig) *UplinkManager {
 				fmt.Println("[Uplink] MQTT connect error:", token.Error())
 				continue
 			}
-			uplinks = append(uplinks, &MQTTUplink{client: client, topic: c.Topic, name: c.Name})
+			uplinks = append(uplinks, mqttlink.NewMqttUplink(client, c.Topic, c.Name))
 		case "http":
-			uplinks = append(uplinks, &HttpUplink{url: c.URL, method: c.Method, headers: c.Headers, name: c.Name})
+			uplinks = append(uplinks, &httpuplink.HttpUplink{
+				URL:     c.URL,
+				Method:  c.Method,
+				Headers: c.Headers,
+			})
 		case "kafka":
 			uplinks = append(uplinks, &kafkauplink.KafkaUplink{Topic: c.Topic, NameV: c.Name})
 		case "nats":
@@ -57,7 +60,7 @@ func NewUplinkManagerFromConfig(cfgs []config.UplinkConfig) *UplinkManager {
 	return &UplinkManager{uplinks: uplinks}
 }
 
-func (m *UplinkManager) SendToAll(payload []byte)  error{
+func (m *UplinkManager) SendToAll(payload []byte) error {
 	data := make(map[string]interface{})
 	for _, up := range m.uplinks {
 		if err := up.Send(payload); err != nil {

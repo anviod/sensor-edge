@@ -2,21 +2,19 @@ package http
 
 import (
 	"bytes"
-
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
-
 )
 
-type HTTPClientUplink struct {
-	url     string
-	method  string
-	headers map[string]string
+type HttpUplink struct {
+	URL     string
+	Method  string
+	Headers map[string]string
 }
 
-func NewHTTPClientUplink(config map[string]interface{}) (*HTTPClientUplink, error) {
+func NewHttpUplink(config map[string]interface{}) (*HttpUplink, error) {
 	url, ok := config["url"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid url")
@@ -34,20 +32,20 @@ func NewHTTPClientUplink(config map[string]interface{}) (*HTTPClientUplink, erro
 		}
 	}
 
-	return &HTTPClientUplink{
-		url:     url,
-		method:  method,
-		headers: headers,
+	return &HttpUplink{
+		URL:     url,
+		Method:  method,
+		Headers: headers,
 	}, nil
 }
 
-func (c *HTTPClientUplink) Send(data []byte) error {
-	req, err := http.NewRequest(c.method, c.url, bytes.NewBuffer(data))
+func (c *HttpUplink) Send(data []byte) error {
+	req, err := http.NewRequest(c.Method, c.URL, bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
 
-	for k, v := range c.headers {
+	for k, v := range c.Headers {
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -60,16 +58,16 @@ func (c *HTTPClientUplink) Send(data []byte) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("http send failed with code %d: %s", resp.StatusCode, body)
 	}
 
 	return nil
 }
 
-func (c *HTTPClientUplink) Name() string {
+func (c *HttpUplink) Name() string {
 	return "http"
 }
-func (c *HTTPClientUplink) Type() string {
+func (c *HttpUplink) Type() string {
 	return "POST"
 }

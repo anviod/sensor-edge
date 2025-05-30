@@ -6,7 +6,7 @@ COPY ./core ./core
 COPY ./models ./models
 COPY ./types ./types
 COPY go.mod go.sum ./
-RUN cd cli && go build -o /app/sensor-edge ./cmd/main.go
+RUN cd cli && go build -o /app/sensor-edge ./main.go
 
 FROM alpine:3.18
 WORKDIR /app

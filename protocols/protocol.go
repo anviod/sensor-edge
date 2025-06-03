@@ -16,4 +16,5 @@ type Protocol interface {
 	ReadBatch(deviceID string, function string, points []string) ([]PointValue, error)
 	Write(point string, value interface{}) error // 新增写入接口，便于联动控制
 	Close() error
+	Reconnect() error // 新增重连接口，便于处理连接异常
 }

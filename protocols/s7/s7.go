@@ -96,3 +96,15 @@ func (c *S7Client) ReadBatch(deviceID string, function string, points []string) 
 	}
 	return values, nil
 }
+
+func(c *S7Client) Reconnect() error {
+	if c.handler == nil {
+		return nil // 未初始化时不需要重连
+	}
+	err := c.handler.Connect()
+	if err != nil {
+		return err
+	}
+	c.client = gos7.NewClient(c.handler)
+	return nil
+}

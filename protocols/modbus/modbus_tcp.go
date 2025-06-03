@@ -3,8 +3,12 @@ package modbus
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"log"
+	"net"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"sensor-edge/protocols"
@@ -13,8 +17,13 @@ import (
 )
 
 type ModbusTCP struct {
-	client  modbus.Client
-	handler *modbus.TCPClientHandler
+	client    modbus.Client
+	handler   *modbus.TCPClientHandler
+	lock      sync.Mutex // 保证重连线程安全
+	failCount int        // 连续失败计数
+	ip        string     // 记录设备IP
+	port      int        // 记录端口
+	slaveId   byte       // 记录slaveId
 }
 
 func (m *ModbusTCP) Init(config map[string]interface{}) error {
@@ -53,11 +62,60 @@ func (m *ModbusTCP) Init(config map[string]interface{}) error {
 	}
 	m.handler = handler
 	m.client = modbus.NewClient(handler)
+	m.ip = ip
+	m.port = port
+	m.slaveId = slaveId
+	return nil
+}
+
+// 检查错误类型，遇到断线则自动重连
+func (m *ModbusTCP) Reconnect() error {
+	return m.ForceReconnect()
+}
+
+// 强制重建连接
+func (m *ModbusTCP) ForceReconnect() error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.handler != nil {
+		_ = m.handler.Close()
+		m.handler = nil
+		m.client = nil
+	}
+	addr := fmt.Sprintf("%s:%d", m.ip, m.port)
+	handler := modbus.NewTCPClientHandler(addr)
+	handler.Timeout = 5 * time.Second
+	handler.SlaveId = m.slaveId
+	if err := handler.Connect(); err != nil {
+		log.Printf("[MODBUS] 强制重连失败: %v", err)
+		m.handler = nil
+		m.client = nil
+		return err
+	}
+	m.handler = handler
+	m.client = modbus.NewClient(handler)
+	log.Printf("[MODBUS] 强制重连成功: %s", handler.Address)
 	return nil
 }
 
 func (m *ModbusTCP) ReadCoils(address, quantity uint16) ([]bool, error) {
+	if m.handler == nil || m.client == nil {
+		log.Printf("[MODBUS] ReadCoils 检测到 handler/client 为 nil，尝试重连")
+		if err := m.ForceReconnect(); err != nil {
+			return nil, err
+		}
+	}
 	results, err := m.client.ReadCoils(address, quantity)
+	if err != nil && isConnError(err) {
+		log.Printf("[MODBUS] ReadCoils 检测到连接断开，立即重建TCP连接 address=%d, quantity=%d, err=%v", address, quantity, err)
+		recErr := m.ForceReconnect()
+		if recErr == nil {
+			results, err = m.client.ReadCoils(address, quantity)
+			if err == nil {
+				log.Printf("[MODBUS] ReadCoils 重连后重试成功, address=%d, quantity=%d", address, quantity)
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +129,23 @@ func (m *ModbusTCP) ReadCoils(address, quantity uint16) ([]bool, error) {
 }
 
 func (m *ModbusTCP) ReadDiscreteInputs(address, quantity uint16) ([]bool, error) {
+	if m.handler == nil || m.client == nil {
+		log.Printf("[MODBUS] ReadDiscreteInputs 检测到 handler/client 为 nil，尝试重连")
+		if err := m.ForceReconnect(); err != nil {
+			return nil, err
+		}
+	}
 	results, err := m.client.ReadDiscreteInputs(address, quantity)
+	if err != nil && isConnError(err) {
+		log.Printf("[MODBUS] ReadDiscreteInputs 检测到连接断开，立即重建TCP连接 address=%d, quantity=%d, err=%v", address, quantity, err)
+		recErr := m.ForceReconnect()
+		if recErr == nil {
+			results, err = m.client.ReadDiscreteInputs(address, quantity)
+			if err == nil {
+				log.Printf("[MODBUS] ReadDiscreteInputs 重连后重试成功, address=%d, quantity=%d", address, quantity)
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +159,23 @@ func (m *ModbusTCP) ReadDiscreteInputs(address, quantity uint16) ([]bool, error)
 }
 
 func (m *ModbusTCP) ReadHoldingRegisters(address, quantity uint16) ([]uint16, error) {
+	if m.handler == nil || m.client == nil {
+		log.Printf("[MODBUS] ReadHoldingRegisters 检测到 handler/client 为 nil，尝试重连")
+		if err := m.ForceReconnect(); err != nil {
+			return nil, err
+		}
+	}
 	results, err := m.client.ReadHoldingRegisters(address, quantity)
+	if err != nil && isConnError(err) {
+		log.Printf("[MODBUS] ReadHoldingRegisters 检测到连接断开，立即重建TCP连接 address=%d, quantity=%d, err=%v", address, quantity, err)
+		recErr := m.ForceReconnect()
+		if recErr == nil {
+			results, err = m.client.ReadHoldingRegisters(address, quantity)
+			if err == nil {
+				log.Printf("[MODBUS] ReadHoldingRegisters 重连后重试成功, address=%d, quantity=%d", address, quantity)
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +187,23 @@ func (m *ModbusTCP) ReadHoldingRegisters(address, quantity uint16) ([]uint16, er
 }
 
 func (m *ModbusTCP) ReadInputRegisters(address, quantity uint16) ([]uint16, error) {
+	if m.handler == nil || m.client == nil {
+		log.Printf("[MODBUS] ReadInputRegisters 检测到 handler/client 为 nil，尝试重连")
+		if err := m.ForceReconnect(); err != nil {
+			return nil, err
+		}
+	}
 	results, err := m.client.ReadInputRegisters(address, quantity)
+	if err != nil && isConnError(err) {
+		log.Printf("[MODBUS] ReadInputRegisters 检测到连接断开，立即重建TCP连接 address=%d, quantity=%d, err=%v", address, quantity, err)
+		recErr := m.ForceReconnect()
+		if recErr == nil {
+			results, err = m.client.ReadInputRegisters(address, quantity)
+			if err == nil {
+				log.Printf("[MODBUS] ReadInputRegisters 重连后重试成功, address=%d, quantity=%d", address, quantity)
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +298,7 @@ func (m *ModbusTCP) ReadBatch(deviceID string, function string, points []string)
 
 // 批量读取保持寄存器（功能码03），支持格式化
 func (m *ModbusTCP) ReadBatchWithFormat(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
+	// 已集成底层断线自动重连能力（ReadHoldingRegisters）
 	if len(points) == 0 {
 		return nil, nil
 	}
@@ -280,7 +387,7 @@ func (m *ModbusTCP) ReadBatchWithFormat(deviceID string, points []protocols.Poin
 
 // 新增：批量读取输入寄存器（功能码04）
 func (m *ModbusTCP) readInputRegistersBatch(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
-	// 逻辑与 ReadBatchWithFormat 类似，只是调用 ReadInputRegisters
+	// 已集成底层断线自动重连能力（ReadInputRegisters）
 	if len(points) == 0 {
 		return nil, nil
 	}
@@ -369,6 +476,7 @@ func (m *ModbusTCP) readInputRegistersBatch(deviceID string, points []protocols.
 
 // 新增：批量读取线圈（功能码01）
 func (m *ModbusTCP) readCoilsBatch(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
+	// 已集成底层断线自动重连能力（ReadCoils）
 	if len(points) == 0 {
 		return nil, nil
 	}
@@ -425,6 +533,7 @@ func (m *ModbusTCP) readCoilsBatch(deviceID string, points []protocols.PointConf
 
 // 新增：批量读取离散输入（功能码02）
 func (m *ModbusTCP) readDiscreteInputsBatch(deviceID string, points []protocols.PointConfig) ([]protocols.PointValue, error) {
+	// 已集成底层断线自动重连能力（ReadDiscreteInputs）
 	if len(points) == 0 {
 		return nil, nil
 	}
@@ -541,4 +650,28 @@ func (m *ModbusTCP) SetSlave(slaveId byte) {
 	if m.handler != nil {
 		m.handler.SlaveId = slaveId
 	}
+}
+
+// 判断是否为连接断开等典型错误
+func isConnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if err == io.EOF {
+		log.Printf("[MODBUS] 检测到 io.EOF 断线错误")
+		return true
+	}
+	if nerr, ok := err.(net.Error); ok && !nerr.Temporary() {
+		log.Printf("[MODBUS] 检测到 net.Error 非临时性错误: %v", err)
+		return true
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "connection closed") ||
+		strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "use of closed network connection") {
+		log.Printf("[MODBUS] 检测到连接断开相关错误: %v", err)
+		return true
+	}
+	return false
 }

@@ -89,3 +89,12 @@ func NewSNMPClient() protocols.Protocol {
 func init() {
 	protocols.Register("snmp", NewSNMPClient)
 }
+
+// SNMPClient 重新链接
+func (s *SNMPClient) Reconnect() error {
+	if s.client == nil {
+		return nil // 未初始化时不需要重连
+	}
+	return s.client.Connect()
+}
+// SNMPClient 重新链接

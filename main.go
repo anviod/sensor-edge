@@ -96,6 +96,14 @@ func readWithRetry(client protocols.Protocol, devID string, function string, add
 		}
 		fmt.Printf("[WARN] 设备 %s 读取失败（第%d次）：%v\n", devID, retry, err)
 		time.Sleep(2 * time.Second)
+		// 新增：多次失败后主动forceReconnect
+		if retry == maxRetry {
+			if err := client.Reconnect(); err != nil {
+				fmt.Printf("[FORCE] 设备 %s 主动 Reconnect 失败: %v\n", devID, err)
+			} else {
+				fmt.Printf("[FORCE] 设备 %s 主动 Reconnect 成功\n", devID)
+			}
+		}
 	}
 	return values, err
 }
@@ -251,7 +259,6 @@ func main() {
 			fmt.Printf("[ERROR] 设备 %s 协议初始化失败: %v\n", set.DeviceID, err)
 			continue
 		}
-		// 动态设置slave_id
 		if m, ok := client.(*modbus.ModbusTCP); ok {
 			slaveId := byte(1)
 			if v, ok := devConf.Config["slave_id"]; ok {
@@ -278,33 +285,36 @@ func main() {
 				}
 			}
 		}
-		for _, funcGroup := range set.Functions {
-			go func(set types.DevicePointSetV2, devConf types.DeviceConfigWithMeta, client protocols.Protocol, interval time.Duration, funcGroup types.FunctionPointGroup) {
-				ticker := time.NewTicker(interval)
-				defer ticker.Stop()
-				for {
-					pointAddrs := extractPointAddresses(funcGroup.Points)
+		go func(set types.DevicePointSetV2, devConf types.DeviceConfigWithMeta, client protocols.Protocol, interval time.Duration) {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				// 每次采集前强制设置 slave_id，防止串号
+				if client != nil {
 					if m, ok := client.(*modbus.ModbusTCP); ok {
-						slaveId := byte(1)
 						if v, ok := devConf.Config["slave_id"]; ok {
 							switch vv := v.(type) {
 							case int:
-								slaveId = byte(vv)
+								m.SetSlave(byte(vv))
 							case float64:
-								slaveId = byte(vv)
+								m.SetSlave(byte(vv))
 							}
 						}
-						m.SetSlave(slaveId)
 					}
-					// 采集时传递功能码 funcGroup.Function 给驱动
+				}
+				allPointValues := make(map[string]interface{})
+				var allAlarms []schema.AlarmInfo
+				metrics := map[string]interface{}{}
+				for _, funcGroup := range set.Functions {
+					// 先写入所有点位名，默认 nil
+					for _, p := range funcGroup.Points {
+						allPointValues[p.Name] = nil
+					}
+					pointAddrs := extractPointAddresses(funcGroup.Points)
 					values, err := readWithRetry(client, set.DeviceID, funcGroup.Function, pointAddrs, 3)
 					if err != nil {
 						fmt.Printf("[ERROR] 设备 %s 采集失败: %v\n", set.DeviceID, err)
-						continue
-					}
-					pointValues := make(map[string]interface{})
-					for _, p := range funcGroup.Points {
-						pointValues[p.Name] = nil
+						// 不 continue，继续处理下一个 function 分组，保证所有点位都合并
 					}
 					for _, v := range values {
 						for _, p := range funcGroup.Points {
@@ -393,7 +403,7 @@ func main() {
 										}
 									}
 								}
-								pointValues[p.Name] = val
+								allPointValues[p.Name] = val
 								// 日志输出也用最终val，保证与上报一致
 								fmt.Printf("[%s] %s = %v\n", set.DeviceID, v.PointID, val)
 								break
@@ -402,7 +412,7 @@ func main() {
 					}
 					// 先推进边缘规则引擎，聚合窗口和报警状态
 					if re != nil {
-						re.ApplyRules(set.DeviceID, pointValues)
+						re.ApplyRules(set.DeviceID, allPointValues)
 					}
 					// 边缘规则引擎处理，收集报警和聚合结果
 					alarms := []schema.AlarmInfo{}
@@ -421,18 +431,18 @@ func main() {
 						// 2. 直接读取规则引擎的 LastAlarms
 						alarms = append(alarms, re.LastAlarms...)
 					}
-					// 上报数据+报警+聚合
-					payload := uplink.EncodeDataReport(set.DeviceID, pointValues, alarms, metrics)
-					err = uplinkMgr.SendToAll(payload)
-					if err != nil {
-						fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)
-					} else {
-						fmt.Printf("[Success] 设备 %s 数据上报成功\n", set.DeviceID)
-					}
-					<-ticker.C
 				}
-			}(set, devConf, client, interval, funcGroup)
-		}
+				// 上报数据+报警+聚合
+				payload := uplink.EncodeDataReport(set.DeviceID, allPointValues, allAlarms, metrics)
+				err := uplinkMgr.SendToAll(payload)
+				if err != nil {
+					fmt.Printf("[Error] 设备 %s 数据上报失败: %v\n", set.DeviceID, err)
+				} else {
+					fmt.Printf("[Success] 设备 %s 数据上报成功\n", set.DeviceID)
+				}
+				<-ticker.C
+			}
+		}(set, devConf, client, interval)
 	}
 
 	// 8. 支持热加载规则（SIGHUP）

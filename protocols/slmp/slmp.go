@@ -89,3 +89,14 @@ func NewSLMPClient() protocols.Protocol {
 func init() {
 	protocols.Register("slmp", NewSLMPClient)
 }
+
+
+func (s *SLMPClient) Reconnect() error {
+	if s.conn != nil {
+		s.conn.Close() // 先关闭旧连接
+	}
+	var err error
+	s.conn, err = net.DialTimeout("tcp", s.ip+":"+s.port, 3*time.Second)
+	return err
+	 
+}

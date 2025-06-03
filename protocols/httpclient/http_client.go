@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sensor-edge/protocols"
 	"time"
+
 )
 
 type HTTPClient struct {
@@ -79,7 +80,7 @@ func (h *HTTPClient) Read(deviceID string) ([]protocols.PointValue, error) {
 	}, nil
 }
 
-func (h *HTTPClient) ReadBatch(deviceID string, points []string) ([]protocols.PointValue, error) {
+func (h *HTTPClient) ReadBatch(deviceID , number string, points []string) ([]protocols.PointValue, error) {
 	//不支持批量读取，直接返回空
 	 return nil, nil
 }
@@ -104,4 +105,8 @@ func NewHTTPClient() protocols.Protocol {
 
 func init() {
 	protocols.Register("http", NewHTTPClient)
+}
+
+func (h *HTTPClient) Reconnect() error {
+	return nil
 }

@@ -80,3 +80,12 @@ func NewTCPClient() protocols.Protocol {
 func init() {
 	protocols.Register("tcpclient", NewTCPClient)
 }
+
+func (t *TCPClient) Reconnect() error {
+	if t.conn != nil {
+		t.conn.Close() // 先关闭旧连接
+	}
+	var err error
+	t.conn, err = net.DialTimeout("tcp", t.ip+":"+t.port, 3*time.Second)
+	return err
+}	

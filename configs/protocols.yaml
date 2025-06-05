@@ -29,5 +29,12 @@ s7:
     slot: 2
     interval: 10        # 采集周期(秒)
     timeout: 3000       # 采集超时时间(毫秒)
+bacnet:
+  - name: "bacnet_sim_1"
+    ip: 127.0.0.1
+    port: 47808
+    device_id: 1001
+    interval: 5         # 采集周期(秒)
+    timeout: 2000       # 采集超时时间(毫秒)
 
 

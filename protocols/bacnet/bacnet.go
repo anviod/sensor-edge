@@ -3,6 +3,7 @@ package bacnet
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sensor-edge/protocols"
 	"sync"
 	"time"
@@ -17,12 +18,15 @@ type BacnetClient struct {
 }
 
 type BacnetPoint struct {
-	Name    string
-	Address string
-	Type    string
-	Format  string
-	Unit    string
-	Value   interface{} // 新增，存储当前点位值
+	Name              string            // 点位名称
+	Address           string            // 点位地址
+	Type              string            // 点位数据类型
+	Format            string            // 点位格式
+	Unit              string            // 点位单位
+	Value             interface{}       // 点位当前值
+	Property          string            // 属性名，如 presentValue
+	PropertyValueType PropertyValueType // 属性值类型，参考 type.go
+	Writable          bool              // 是否可写
 }
 
 // 初始化链接信息
@@ -36,12 +40,30 @@ func (c *BacnetClient) Init(config map[string]interface{}) error {
 		for _, p := range pts {
 			if m, ok := p.(map[string]interface{}); ok {
 				pt := BacnetPoint{
-					Name:    fmt.Sprintf("%v", m["name"]),
-					Address: fmt.Sprintf("%v", m["address"]),
-					Type:    fmt.Sprintf("%v", m["type"]),
-					Format:  fmt.Sprintf("%v", m["format"]),
-					Unit:    fmt.Sprintf("%v", m["unit"]),
-					Value:   m["init_value"], // 支持初始值
+					Name:     fmt.Sprintf("%v", m["name"]),
+					Address:  fmt.Sprintf("%v", m["address"]),
+					Type:     fmt.Sprintf("%v", m["type"]),
+					Format:   fmt.Sprintf("%v", m["format"]),
+					Unit:     fmt.Sprintf("%v", m["unit"]),
+					Value:    m["init_value"],
+					Property: fmt.Sprintf("%v", m["property"]),
+					Writable: false,
+				}
+				if w, ok := m["writable"].(bool); ok {
+					pt.Writable = w
+				}
+				if pvt, ok := m["property_value_type"].(string); ok {
+					switch pvt {
+					case "REAL":
+						pt.PropertyValueType = TypeReal
+					case "INTEGER":
+						pt.PropertyValueType = TypeSignedInt
+					case "BOOLEAN":
+						pt.PropertyValueType = TypeBoolean
+					// 可扩展更多类型
+					default:
+						pt.PropertyValueType = TypeNull
+					}
 				}
 				c.points[pt.Name] = pt
 			}
@@ -114,41 +136,49 @@ func (c *BacnetClient) Write(point string, value interface{}) error {
 	if !ok {
 		return fmt.Errorf("bacnet: point %s not found", point)
 	}
-	// 权限判断：禁止 writable: false 的点位写入
-	writable := true
-	if m, ok := c.points[point]; ok {
-		if m2, ok := any(m).(map[string]interface{}); ok {
-			if w, ok := m2["writable"].(bool); ok {
-				writable = w
-			}
-		}
-	}
-	// 兼容结构体字段
-	if !writable {
+	if !pt.Writable {
 		return fmt.Errorf("bacnet: point %s is not writable", point)
 	}
-	// 类型校验
-	switch pt.Type {
-	case "float":
-		_, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("bacnet: point %s expect float64 value", point)
+	typeCheck := func(expect, actual reflect.Kind) error {
+		if actual != expect {
+			return fmt.Errorf("bacnet: point %s expect %s value, got %s", point, expect, actual)
 		}
-	case "int":
-		_, ok := value.(int)
-		if !ok {
-			_, ok := value.(float64)
-			if !ok {
-				return fmt.Errorf("bacnet: point %s expect int value", point)
-			}
+		return nil
+	}
+	switch pt.PropertyValueType {
+	case TypeReal, TypeDouble:
+		if err := typeCheck(reflect.Float64, reflect.TypeOf(value).Kind()); err != nil {
+			return err
 		}
-	case "bool":
-		_, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("bacnet: point %s expect bool value", point)
+	case TypeSignedInt, TypeEnumerated:
+		if err := typeCheck(reflect.Int, reflect.TypeOf(value).Kind()); err != nil {
+			return err
+		}
+	case TypeUnsignedInt:
+		if err := typeCheck(reflect.Uint64, reflect.TypeOf(value).Kind()); err != nil {
+			return err
+		}
+	case TypeBoolean:
+		if err := typeCheck(reflect.Bool, reflect.TypeOf(value).Kind()); err != nil {
+			return err
+		}
+	case TypeCharacterString, TypeDate, TypeTime:
+		if err := typeCheck(reflect.String, reflect.TypeOf(value).Kind()); err != nil {
+			return err
+		}
+	case TypeOctetString:
+		if reflect.TypeOf(value).Kind() != reflect.Slice || reflect.TypeOf(value).Elem().Kind() != reflect.Uint8 {
+			return fmt.Errorf("bacnet: point %s expect []byte value", point)
+		}
+	case TypeBitString:
+		if reflect.TypeOf(value).Kind() != reflect.Slice || reflect.TypeOf(value).Elem().Kind() != reflect.Bool {
+			return fmt.Errorf("bacnet: point %s expect []bool value", point)
+		}
+	case TypeObjectID:
+		if reflect.TypeOf(value) != reflect.TypeOf(ObjectID{}) {
+			return fmt.Errorf("bacnet: point %s expect ObjectID value", point)
 		}
 	}
-	// 真实写入：更新点位值
 	pt.Value = value
 	c.points[point] = pt
 	return nil

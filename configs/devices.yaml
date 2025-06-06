@@ -1,22 +1,31 @@
 # 设备清单
-- id: sensor_modbus_1
-  name: "Modbus Sensor 1"
-  protocol: modbus_tcp
-  protocol_name: modbus_tcp_name_1
-  interval: 10s
-  enable_ping: true
-  description: "Modbus TCP device"
-  ip: 127.0.0.1
-  port: 502
-  slave_id: 1   # 确保这个字段存在
+# - id: sensor_modbus_1
+#   name: "Modbus Sensor 1"
+#   protocol: modbus_tcp
+#   protocol_name: modbus_tcp_name_1
+#   interval: 10s
+#   enable_ping: true
+#   description: "Modbus TCP device"
+#   ip: 127.0.0.1
+#   port: 502
+#   slave_id: 1   # 确保这个字段存在
   
-- id: sensor_modbus_2
-  name: "Modbus Sensor 2"
-  protocol: modbus_tcp
-  protocol_name: modbus_tcp_name_1
+# - id: sensor_modbus_2
+#   name: "Modbus Sensor 2"
+#   protocol: modbus_tcp
+#   protocol_name: modbus_tcp_name_1
+#   interval: 10s
+#   enable_ping: true
+#   description: "Modbus TCP device"
+#   ip: 127.0.0.1
+#   port: 502
+#   slave_id: 2   # 确保这个字段存在
+
+- id: bacnet_sim_1
+  object_device: 2228316
+  name: "BACnet Simulation Device"
+  protocol: bacnet
+  protocol_name: bacnet_sim_1
   interval: 10s
   enable_ping: true
-  description: "Modbus TCP device"
-  ip: 127.0.0.1
-  port: 502
-  slave_id: 2   # 确保这个字段存在
+  description: "BACnet simulation device"

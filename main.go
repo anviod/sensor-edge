@@ -23,6 +23,8 @@ import (
 	"github.com/Knetic/govaluate"
 
 	"gopkg.in/yaml.v3"
+
+	_ "sensor-edge/protocols/bacnet"
 )
 
 // 客户端池Key
@@ -201,10 +203,25 @@ func main() {
 	devMap := make(map[string]types.DeviceConfigWithMeta)
 	for _, d := range devs {
 		devMap[d.ID] = d
+		if d.Protocol == "bacnet" {
+			fmt.Printf("[BACNET] 加载到设备: id=%s, name=%s, protocol_name=%s, object_device=%v\n", d.ID, d.Name, d.ProtocolName, d.Config["object_device"])
+		}
 	}
 
 	// 4. 加载点位物模型映射
 	pointSetsV2, _ := config.LoadPointMappingsV2("configs/points.yaml")
+	// 新增：打印bacnet设备的点位信息（去除Writable字段）
+	for _, set := range pointSetsV2 {
+		if dev, ok := devMap[set.DeviceID]; ok && dev.Protocol == "bacnet" {
+			fmt.Printf("[BACNET] 设备 %s 点位映射如下：\n", set.DeviceID)
+			for _, funcGroup := range set.Functions {
+				fmt.Printf("  Function: %s\n", funcGroup.Function)
+				for _, p := range funcGroup.Points {
+					fmt.Printf("    - name: %s, address: %s, type: %s, format: %s, unit: %s\n", p.Name, p.Address, p.Type, p.Format, p.Unit)
+				}
+			}
+		}
+	}
 
 	// 5. 加载新版分组式边缘规则
 	devRules, _ := config.LoadDeviceEdgeRules("configs/edge_rules.yaml")

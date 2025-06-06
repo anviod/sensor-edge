@@ -5,41 +5,23 @@
   functions:
     - function: "analogInput"   # 模拟量输入点
       points:
-        - address: "1"
-          name: "room_temp"
+        - address: "OBJECT_ANALOG_INPUT:0"
+          name: "ai0"
           type: "float"
           property: "presentValue"
           property_value_type: "REAL"
           unit: "℃"
-          transform: "value * 1.0"
+          transform: ""
           format: "Float AB CD"
           writable: false
-        - address: "2"
-          name: "humidity"
+        - address: "OBJECT_ANALOG_INPUT:1"
+          name: "ai1"
           type: "float"
           property: "presentValue"
           property_value_type: "REAL"
-          unit: "%RH"
-          transform: "value * 1.0"
+          unit: "℃"
+          transform: ""
           format: "Float AB CD"
-          writable: false
-        - address: "3"
-          name: "co2"
-          type: "int"
-          property: "presentValue"
-          property_value_type: "INTEGER"
-          unit: "ppm"
-          transform: ""
-          format: "INT"
-          writable: false
-        - address: "4"
-          name: "pm2_5"
-          type: "int"
-          property: "presentValue"
-          property_value_type: "INTEGER"
-          unit: "ug/m3"
-          transform: ""
-          format: "INT"
           writable: false
     - function: "binaryInput"    # 开关量输入点
       points:

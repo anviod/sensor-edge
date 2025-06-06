@@ -33,7 +33,12 @@ type BacnetPoint struct {
 func (c *BacnetClient) Init(config map[string]interface{}) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	c.deviceID = fmt.Sprintf("%v", config["device_id"])
+	// 优先从 object_device 获取设备ID
+	if v, ok := config["object_device"]; ok {
+		c.deviceID = fmt.Sprintf("%v", v)
+	} else {
+		c.deviceID = fmt.Sprintf("%v", config["device_id"])
+	}
 	c.connected = true
 	if pts, ok := config["points"].([]interface{}); ok {
 		c.points = make(map[string]BacnetPoint)
@@ -99,15 +104,36 @@ func (c *BacnetClient) Read(deviceID string) ([]protocols.PointValue, error) {
 	return result, nil
 }
 
+// 支持通过点位 name 或 address 采集
 func (c *BacnetClient) ReadBatch(deviceID string, function string, points []string) ([]protocols.PointValue, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if !c.connected {
 		return nil, errors.New("bacnet: not connected")
 	}
+	// 构建 address->name 映射表
+	addrToName := make(map[string]string)
+	for name, pt := range c.points {
+		addrToName[pt.Address] = name
+	}
 	result := make([]protocols.PointValue, 0, len(points))
-	for _, name := range points {
-		pt := c.points[name]
+	for _, key := range points {
+		pt, ok := c.points[key]
+		if !ok {
+			// 支持通过 address 查询
+			if name2, ok2 := addrToName[key]; ok2 {
+				pt = c.points[name2]
+			} else {
+				// 未找到，返回 bad
+				result = append(result, protocols.PointValue{
+					PointID:   key,
+					Value:     nil,
+					Quality:   "bad",
+					Timestamp: time.Now().Unix(),
+				})
+				continue
+			}
+		}
 		val := pt.Value
 		if val == nil {
 			if pt.Type == "bool" {
@@ -117,7 +143,7 @@ func (c *BacnetClient) ReadBatch(deviceID string, function string, points []stri
 			}
 		}
 		result = append(result, protocols.PointValue{
-			PointID:   name,
+			PointID:   pt.Name,
 			Value:     val,
 			Quality:   "good",
 			Timestamp: time.Now().Unix(),

@@ -1,5 +1,5 @@
 # BACnet 设备点位物模型配置示例
-- device_id: "bacnet_sim_1"
+- device_id: "2228316"
   protocol: "bacnet"
   protocol_name: "bacnet_sim_1"
   functions:

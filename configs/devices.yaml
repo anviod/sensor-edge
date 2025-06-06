@@ -21,11 +21,11 @@
 #   port: 502
 #   slave_id: 2   # 确保这个字段存在
 
-- id: bacnet_sim_1
-  object_device: 2228316
+- id: 2228316
   name: "BACnet Simulation Device"
   protocol: bacnet
   protocol_name: bacnet_sim_1
   interval: 10s
   enable_ping: true
   description: "BACnet simulation device"
+  object_device: 2228316

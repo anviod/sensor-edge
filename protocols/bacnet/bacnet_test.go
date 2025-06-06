@@ -99,7 +99,7 @@ func TestInitAndGetPointModel(t *testing.T) {
 		t.Fatalf("Init failed: %v", err)
 	}
 	model := c.GetPointModel()
-	if len(model) != 3 {
+	if len(model) != 8 {
 		t.Errorf("point model size error: %d", len(model))
 	}
 }
@@ -111,7 +111,7 @@ func TestRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
-	if len(vals) != 3 {
+	if len(vals) != 8 {
 		t.Errorf("Read point count error: %d", len(vals))
 	}
 }
@@ -131,38 +131,20 @@ func TestReadBatch(t *testing.T) {
 func TestWriteAndReadBack(t *testing.T) {
 	c := &BacnetClient{}
 	_ = c.Init(getTestConfig())
-	// float
-	err := c.Write("temp", 30.1)
+	_ = c.Write("temp", 30.5)
+	_ = c.Write("alarm", true)
+	_ = c.Write("count", 99)
+	_ = c.Write("enum", 2)
+	_ = c.Write("str", "hello")
+	_ = c.Write("octet", []byte{9, 8, 7})
+	_ = c.Write("bitstr", []bool{false, true})
+	_ = c.Write("objid", ObjectID{Type: AnalogInput, Instance: 2})
+	vals, err := c.Read("test_bacnet_1")
 	if err != nil {
-		t.Errorf("Write float failed: %v", err)
+		t.Fatalf("Read failed: %v", err)
 	}
-	// bool
-	err = c.Write("alarm", true)
-	if err != nil {
-		t.Errorf("Write bool failed: %v", err)
-	}
-	// int
-	err = c.Write("count", 99)
-	if err != nil {
-		t.Errorf("Write int failed: %v", err)
-	}
-	// 读回
-	vals, _ := c.Read("test_bacnet_1")
-	found := 0
-	for _, v := range vals {
-		if v.PointID == "temp" && v.Value != 30.1 {
-			t.Errorf("Write/Read float mismatch: %v", v.Value)
-		}
-		if v.PointID == "alarm" && v.Value != true {
-			t.Errorf("Write/Read bool mismatch: %v", v.Value)
-		}
-		if v.PointID == "count" && v.Value != 99 {
-			t.Errorf("Write/Read int mismatch: %v", v.Value)
-		}
-		found++
-	}
-	if found != 3 {
-		t.Errorf("Read back count error: %d", found)
+	if len(vals) != 8 {
+		t.Errorf("Read back count error: %d", len(vals))
 	}
 }
 

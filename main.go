@@ -4,12 +4,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"net"
 	"os"
 	"os/signal"
 	"reflect"
 	"sensor-edge/config"
 	"sensor-edge/edgecompute"
 	"sensor-edge/protocols"
+	"sensor-edge/protocols/bacnet"
 	"sensor-edge/protocols/modbus"
 	"sensor-edge/schema"
 	"sensor-edge/types"
@@ -182,6 +184,28 @@ func parseTransform(expr string, value interface{}) (interface{}, error) {
 }
 
 func main() {
+	// 启动 BACnet I-Am 自动发现监听
+	go func() {
+		err := bacnet.ListenIAM(47808, func(info *bacnet.DeviceInfo) {
+			bacnet.RegisterDevice(info)
+		})
+		if err != nil {
+			fmt.Printf("[BACNET] ListenIAM error: %v\n", err)
+		}
+	}()
+
+	go func() {
+		conn, _ := net.ListenUDP("udp4", &net.UDPAddr{Port: 47808}) // BACnet 默认端口
+		buf := make([]byte, 1500)
+		for {
+			n, addr, _ := conn.ReadFromUDP(buf)
+			info, err := bacnet.ParseIAm(buf[:n], addr.IP)
+			if err == nil {
+				bacnet.RegisterAndStartPolling(info)
+			}
+		}
+	}()
+
 	// 1. 通信协议接入与注册（已在各协议包init中自动完成）
 
 	// 2. 读取全局配置、协议参数、设备清单
@@ -235,6 +259,33 @@ func main() {
 	uplinkMgr := uplink.NewUplinkManagerFromConfig(uplinkCfgs)
 
 	fmt.Println("[System] Device collection, edge rule engine & uplink started...")
+
+	// BACnet自动发现并注册设备
+	bacnetClient := &bacnet.BacnetClient{}
+	devices, err := bacnetClient.DiscoverDevicesReal(3 * time.Second)
+	if err == nil && len(devices) > 0 {
+		for _, dev := range devices {
+			if _, exists := devMap[dev.DeviceID]; !exists {
+				fmt.Printf("[BACNET] 发现新设备: id=%s, address=%s, vendor=%s, model=%s\n", dev.DeviceID, dev.Address, dev.Vendor, dev.Model)
+				// 自动注册到 devMap，DeviceMeta 结构体赋值
+				devMap[dev.DeviceID] = types.DeviceConfigWithMeta{
+					DeviceMeta: types.DeviceMeta{
+						ID:           dev.DeviceID,
+						Name:         dev.Model,
+						Protocol:     "bacnet",
+						ProtocolName: "auto_discovered",
+						IP:           dev.Address,
+					},
+					Config: map[string]interface{}{
+						"object_device": dev.DeviceID,
+						"ip":            dev.Address,
+					},
+				}
+				// 可选：自动启动采集 goroutine
+				// go StartPolling(devMap[dev.DeviceID])
+			}
+		}
+	}
 
 	// 7. 采集主流程：每个设备独立采集周期并发采集
 	for _, set := range pointSetsV2 {
